@@ -120,8 +120,8 @@ function buildStyle(base) {
     glyphs: `${OFM}/fonts/{fontstack}/{range}.pbf`,
     projection: { type: 'globe' },
     sky: {
-      'sky-color': c.paper, 'horizon-color': c.paper, 'fog-color': c.paper,
-      'atmosphere-blend': ['interpolate', ['linear'], ['zoom'], 0, 0.35, 4, 0.1, 6, 0],
+      'sky-color': '#04060B', 'horizon-color': '#8FB4E8', 'fog-color': '#04060B',
+      'atmosphere-blend': ['interpolate', ['linear'], ['zoom'], 0, 1, 4, 0.6, 7, 0],
     },
     sources, layers,
   };
@@ -211,7 +211,8 @@ export function createMap(el, { onSelect, onSpot, onMoveEnd, start }) {
           properties: { id: s.id, title: s.title, place: s.place || '', private: s.visibility === 'private' ? 1 : 0 },
         })),
       };
-      if (map.isStyleLoaded() && map.getSource('sounds')) applyData();
+      if (map.getSource('sounds')) applyData();
+      else map.once('styledata', applyData);
     },
     select(id) {
       if (selected && map.getSource('sounds')) map.setFeatureState({ source: 'sounds', id: selected }, { selected: false });

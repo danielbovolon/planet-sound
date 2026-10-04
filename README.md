@@ -107,5 +107,6 @@ For local testing, set `apiBase` in `config.js` to `http://127.0.0.1:8787`.
 
 ## Credits
 
-Map data © OpenStreetMap contributors, vector tiles by OpenFreeMap, imagery © Esri. Fonts: Libre
+Map data © OpenStreetMap contributors, vector tiles by OpenFreeMap, imagery © Esri. Milky Way panorama:
+ESO/S. Brunier (CC BY 4.0, https://www.eso.org/public/images/eso0932a/). Fonts: Libre
 Franklin and Newsreader (SIL Open Font License). Map rendering: MapLibre GL JS (BSD-3-Clause).

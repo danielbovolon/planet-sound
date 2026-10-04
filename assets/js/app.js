@@ -3,6 +3,8 @@ import { $, $$, esc, accession, fmtTime, fmtDate, fmtShortDate, fmtCoords, fmtBy
 import { API, call, identity, mediaUrl, ensureIdentity, upload, ApiError } from './api.js';
 import { outbox, prefs } from './store.js';
 import { createMap } from './map.js';
+import { createSpace } from './space.js';
+import { createSky } from './sky.js';
 import { Player, drawWave } from './player.js';
 import { initStudio, sendEntry, openStudio, shrinkImage } from './studio.js';
 
@@ -30,6 +32,16 @@ const mapCtl = createMap($('#map'), {
   onSpot: ids => showSpot(ids),
   onMoveEnd: () => { prefs.set('mapView', mapCtl.center()); },
 });
+// The real sky (WebGL photo sphere); the painted sky if that isn't possible.
+{
+  let fellBack = false;
+  const fallback = () => {
+    if (fellBack) return; fellBack = true;
+    const c = document.createElement('canvas'); c.id = 'space'; c.setAttribute('aria-hidden', 'true');
+    $('#space').replaceWith(c); createSpace(c, mapCtl.map);
+  };
+  if (!createSky($('#space'), mapCtl.map, { onFail: fallback })) fallback();
+}
 $$('[data-base]').forEach(b => b.addEventListener('click', () => mapCtl.setBase(b.dataset.base)));
 $('#locate').addEventListener('click', () => {
   if (!navigator.geolocation) return toast('This device can’t share its position.');

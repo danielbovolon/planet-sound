@@ -5,11 +5,11 @@
  *   draw in the field.
  * - The catalogue is fetched fresh when possible, cached as a fallback.
  * Bump VERSION whenever you deploy changed files. */
-const VERSION = 'ps-2026-10-04';
+const VERSION = 'ps-2026-10-04d';
 const SHELL = [
   './', 'index.html', 'config.js', 'manifest.webmanifest',
   'assets/css/app.css',
-  'assets/js/app.js', 'assets/js/api.js', 'assets/js/ui.js', 'assets/js/store.js', 'assets/js/map.js', 'assets/js/player.js', 'assets/js/studio.js',
+  'assets/js/app.js', 'assets/js/api.js', 'assets/js/ui.js', 'assets/js/store.js', 'assets/js/map.js', 'assets/js/player.js', 'assets/js/studio.js', 'assets/js/space.js', 'assets/js/sky.js', 'assets/img/milkyway-small.jpg',
   'assets/js/audio/engine.js', 'assets/js/audio/flac.js', 'assets/js/audio/analysis.js', 'assets/js/audio/take-worker.js', 'assets/js/audio/capture-worklet.js',
   'vendor/maplibre/maplibre-gl.mjs', 'vendor/maplibre/maplibre-gl-shared.mjs', 'vendor/maplibre/maplibre-gl-worker.mjs', 'vendor/maplibre/maplibre-gl.css',
   'assets/img/logo.png', 'assets/img/favicon.png', 'assets/img/icon-192.png',

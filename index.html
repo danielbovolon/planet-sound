@@ -47,6 +47,7 @@
 <main id="main">
   <!-- MAP -->
   <section class="view" id="map-view" aria-label="Map">
+    <canvas id="space" aria-hidden="true"></canvas>
     <div id="map" role="application" aria-label="Map of recordings"></div>
     <div class="map-tools">
       <div class="seg" role="group" aria-label="Base map">
@@ -117,7 +118,7 @@
       <p>You choose, per recording, whether it joins the public map or stays in your private archive, and whether others may download it.</p>
       <h2>Care</h2>
       <p>Please don’t publish private conversations or anything recorded without consent. Entries are curated: the archive keeps the right to remove anything that doesn’t belong here.</p>
-      <p class="credit">Map data © OpenStreetMap contributors, tiles by OpenFreeMap; imagery © Esri and its partners.</p>
+      <p class="credit">Map data © OpenStreetMap contributors, tiles by OpenFreeMap; imagery © Esri and its partners. Milky Way panorama: <a href="https://www.eso.org/public/images/eso0932a/" target="_blank" rel="noopener">ESO/S. Brunier</a>, CC BY 4.0.</p>
       <p><button type="button" class="btn solid" data-view="map">Start listening</button></p>
     </article>
   </section>

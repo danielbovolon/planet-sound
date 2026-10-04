@@ -102,7 +102,8 @@ button { cursor: pointer; }
 /* ---------- views ---------- */
 main { position: fixed; inset: var(--bar-h) 0 0 0; }
 .view { position: absolute; inset: 0; }
-#map { position: absolute; inset: 0; background: var(--paper); }
+#space { position: absolute; inset: 0; width: 100%; height: 100%; display: block; background: #04060B; }
+#map { position: absolute; inset: 0; background: transparent; }
 .maplibregl-canvas:focus-visible { outline-offset: -3px; }
 .maplibregl-ctrl-attrib { background: color-mix(in srgb, var(--paper) 85%, transparent) !important; color: var(--graphite); font: 11px/1.3 var(--sans); }
 .maplibregl-ctrl-attrib a { color: var(--graphite); }
@@ -120,7 +121,7 @@ body.card-open .maplibregl-ctrl-bottom-right { right: 464px; }
 .seg button[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
 .tool { width: 38px; height: 38px; border: 0; border-radius: 8px; background: var(--sheet); box-shadow: var(--shadow); display: grid; place-items: center; }
 .tool svg { width: 20px; height: 20px; fill: var(--ink); stroke: var(--ink); stroke-width: 1.5; }
-.map-count { position: absolute; left: 16px; top: 12px; margin: 0; font-size: 13px; color: var(--graphite); background: color-mix(in srgb, var(--paper) 80%, transparent); padding: 3px 8px; border-radius: 4px; pointer-events: none; }
+.map-count { position: absolute; left: 16px; top: 12px; margin: 0; font-size: 13px; color: #B9C3CF; background: rgba(4,6,11,.45); padding: 3px 8px; border-radius: 4px; pointer-events: none; }
 
 /* location picker */
 .picker { position: absolute; inset: 0; pointer-events: none; z-index: 5; }
