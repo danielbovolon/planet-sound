@@ -1,0 +1,316 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Planet Sound</title>
+<meta name="description" content="An open archive of the world’s sound. Field recordings, each kept at the place and moment it was made.">
+<meta name="theme-color" content="#EEEFEA" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#10161D" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Planet Sound">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta property="og:title" content="Planet Sound">
+<meta property="og:description" content="An open archive of the world’s sound.">
+<meta property="og:image" content="assets/img/icon-512.png">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="assets/img/favicon.png">
+<link rel="apple-touch-icon" href="assets/img/apple-touch-icon.png">
+<link rel="preload" href="assets/fonts/libre-franklin-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="assets/fonts/newsreader-latin-500-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="vendor/maplibre/maplibre-gl.css">
+<link rel="stylesheet" href="assets/css/app.css">
+<script src="config.js"></script>
+</head>
+<body>
+<a class="skip" href="#index-view">Skip to the index</a>
+
+<header class="bar">
+  <a class="brand" href="./" aria-label="Planet Sound, home">
+    <span class="mark" aria-hidden="true"></span>
+    <span class="name">Planet Sound</span>
+  </a>
+  <nav class="views" aria-label="Views">
+    <button type="button" data-view="map" aria-pressed="true">Map</button>
+    <button type="button" data-view="index" aria-pressed="false">Index</button>
+    <button type="button" data-view="about" aria-pressed="false">About</button>
+  </nav>
+  <label class="search">
+    <span class="sr">Search the archive</span>
+    <input id="q" type="search" placeholder="Search titles, places, tags" autocomplete="off" spellcheck="false">
+  </label>
+  <button type="button" class="you" id="you-btn" aria-haspopup="dialog">Your archive</button>
+  <button type="button" class="rec-btn" id="rec-open"><span class="lamp" aria-hidden="true"></span>Record</button>
+  <button type="button" class="menu-btn" id="menu-btn" aria-label="Menu" aria-expanded="false"><span></span><span></span></button>
+</header>
+
+<main id="main">
+  <!-- MAP -->
+  <section class="view" id="map-view" aria-label="Map">
+    <div id="map" role="application" aria-label="Map of recordings"></div>
+    <div class="map-tools">
+      <div class="seg" role="group" aria-label="Base map">
+        <button type="button" data-base="atlas" aria-pressed="true">Atlas</button>
+        <button type="button" data-base="imagery" aria-pressed="false">Imagery</button>
+      </div>
+      <button type="button" class="tool" id="locate" aria-label="Show where I am">
+        <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="3.2"/><path d="M10 1.5v3M10 15.5v3M1.5 10h3M15.5 10h3"/><circle cx="10" cy="10" r="6.2" fill="none"/></svg>
+      </button>
+    </div>
+    <p class="map-count" id="map-count" aria-live="polite"></p>
+    <div class="picker" id="picker" hidden>
+      <div class="cross" aria-hidden="true"></div>
+      <div class="picker-bar">
+        <p><strong>Move the map</strong> until the cross sits where you recorded.</p>
+        <p class="coords" id="picker-coords"></p>
+        <div class="row">
+          <button type="button" class="btn ghost" id="picker-cancel">Cancel</button>
+          <button type="button" class="btn solid" id="picker-ok">Use this spot</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- INDEX -->
+  <section class="view" id="index-view" aria-label="Index" hidden>
+    <div class="index-wrap">
+      <div class="index-head">
+        <h1>Index</h1>
+        <p class="index-sum" id="index-sum"></p>
+      </div>
+      <div class="filters">
+        <div class="tagrow" id="tag-filter" role="group" aria-label="Filter by tag"></div>
+        <div class="filter-right">
+          <label class="check"><input type="checkbox" id="only-mine"> Only mine</label>
+          <label class="sel"><span class="sr">Sort</span>
+            <select id="sort">
+              <option value="new">Newest first</option>
+              <option value="old">Oldest first</option>
+              <option value="long">Longest first</option>
+              <option value="title">Title A–Z</option>
+            </select>
+          </label>
+        </div>
+      </div>
+      <div class="table" role="table" aria-label="Recordings">
+        <div class="tr th" role="row">
+          <span role="columnheader">No.</span><span role="columnheader">Title</span><span role="columnheader">Place</span>
+          <span role="columnheader">Recorded</span><span role="columnheader" class="num">Length</span><span role="columnheader">Format</span>
+        </div>
+        <div id="rows" role="rowgroup"></div>
+      </div>
+      <p class="empty" id="index-empty" hidden></p>
+    </div>
+  </section>
+
+  <!-- ABOUT -->
+  <section class="view" id="about-view" aria-label="About" hidden>
+    <article class="about">
+      <div class="about-mark" aria-hidden="true"></div>
+      <h1>An open archive of the world’s sound</h1>
+      <p class="lede">Planet Sound keeps field recordings at the place and the moment they were made. Anyone can add one. Nothing is reconstructed or invented: every entry is a sound someone stood in and chose to keep.</p>
+      <h2>How entries are kept</h2>
+      <p>Recordings made here are captured without the phone’s voice processing (no echo cancelling, noise reduction or automatic gain) and stored losslessly as 24-bit FLAC. Each entry carries its own catalogue card: where and when, who recorded it and with what, and the measured facts of the file — sample rate, bit depth, integrated loudness, peak level and the background level of the place.</p>
+      <p>Playback is level-matched, so moving between a quiet forest and a loud market doesn’t throw you. The file itself is never altered.</p>
+      <h2>Taking part</h2>
+      <p>You don’t need an account. Your first recording gives you a listener key: it proves the recordings are yours, so only you can edit them, and it lets you open your archive on another device. Keep it somewhere safe; it can’t be recovered if lost.</p>
+      <p>You choose, per recording, whether it joins the public map or stays in your private archive, and whether others may download it.</p>
+      <h2>Care</h2>
+      <p>Please don’t publish private conversations or anything recorded without consent. Entries are curated: the archive keeps the right to remove anything that doesn’t belong here.</p>
+      <p class="credit">Map data © OpenStreetMap contributors, tiles by OpenFreeMap; imagery © Esri and its partners.</p>
+      <p><button type="button" class="btn solid" data-view="map">Start listening</button></p>
+    </article>
+  </section>
+</main>
+
+<!-- ENTRY CARD -->
+<aside class="card" id="card" aria-labelledby="c-title" hidden>
+  <div class="card-grip" aria-hidden="true"></div>
+  <div class="card-scroll">
+    <header class="card-head">
+      <p class="acc" id="c-no"></p>
+      <button type="button" class="x" id="c-close" aria-label="Close"></button>
+    </header>
+    <h2 id="c-title"></h2>
+    <p class="c-place" id="c-place"></p>
+    <p class="c-coords" id="c-coords"></p>
+
+    <figure class="sono" id="c-sono">
+      <div class="sono-img" id="c-spec" role="img" aria-label="Spectrogram"></div>
+      <div class="sono-axis" aria-hidden="true"><span style="top:12%">10 kHz</span><span style="top:46.9%">1 kHz</span><span style="top:81.8%">100 Hz</span></div>
+      <canvas class="wave" id="c-wave" aria-hidden="true"></canvas>
+      <div class="head" id="c-head" aria-hidden="true"></div>
+      <input class="seek" id="c-seek" type="range" min="0" max="1000" value="0" aria-label="Position">
+    </figure>
+
+    <div class="transport">
+      <button type="button" class="play" id="c-play" aria-label="Play"><svg viewBox="0 0 24 24" aria-hidden="true"><path class="i-play" d="M8 5.5v13l10.5-6.5z"/><g class="i-pause"><rect x="7" y="5.5" width="3.6" height="13"/><rect x="13.4" y="5.5" width="3.6" height="13"/></g></svg></button>
+      <p class="time"><span id="c-el">0:00</span> <span class="of">/</span> <span id="c-du">0:00</span></p>
+      <canvas class="meter" id="c-meter" width="160" height="18" aria-hidden="true"></canvas>
+      <label class="lm" title="Plays every entry at a similar loudness without changing the file"><input type="checkbox" id="c-lm" checked> Level-matched</label>
+    </div>
+    <p class="status" id="c-status" role="status"></p>
+
+    <div class="c-notes" id="c-notes"></div>
+    <img class="c-photo" id="c-photo" alt="" hidden>
+
+    <dl class="facts" id="c-facts"></dl>
+
+    <div class="c-actions">
+      <a class="btn" id="c-dl" hidden>Download</a>
+      <button type="button" class="btn" id="c-share">Share</button>
+      <button type="button" class="btn" id="c-collect">Add to collection</button>
+    </div>
+    <div class="c-owner" id="c-owner" hidden>
+      <p>This is yours.</p>
+      <div class="row">
+        <button type="button" class="btn" id="c-edit">Edit</button>
+      </div>
+    </div>
+  </div>
+</aside>
+
+<!-- RECORDER -->
+<section class="studio" id="studio" aria-label="New recording" hidden>
+  <header class="studio-head">
+    <ol class="steps" aria-label="Steps">
+      <li data-step="take" aria-current="step">Take</li>
+      <li data-step="place">Place</li>
+      <li data-step="describe">Describe</li>
+      <li data-step="publish">Publish</li>
+    </ol>
+    <button type="button" class="x" id="s-close" aria-label="Close the recorder"></button>
+  </header>
+
+  <!-- take -->
+  <div class="pane" data-pane="take">
+    <div class="input-line">
+      <label class="sel input-sel"><span class="sr">Input</span><select id="s-input"></select></label>
+      <p class="input-info" id="s-info">Allow the microphone to see levels.</p>
+    </div>
+    <div class="scope">
+      <canvas id="s-wave" aria-hidden="true"></canvas>
+      <div class="sono-img review" id="s-spec" hidden></div>
+    </div>
+    <div class="meters" aria-hidden="true">
+      <canvas id="s-meter"></canvas>
+      <button type="button" class="clip" id="s-clip" title="Clipped. Tap to reset.">Clip</button>
+    </div>
+    <div class="deck">
+      <p class="clock" id="s-clock">00:00<small>.0</small></p>
+      <button type="button" class="big-rec" id="s-rec" aria-label="Start recording"><span></span></button>
+      <p class="size" id="s-size"></p>
+    </div>
+    <p class="s-msg" id="s-msg" role="status"></p>
+    <div class="review-row" id="s-review" hidden>
+      <button type="button" class="btn" id="s-again">Record again</button>
+      <button type="button" class="btn" id="s-listen">Listen back</button>
+      <button type="button" class="btn solid" id="s-keep">Use this take</button>
+    </div>
+    <p class="alt"><label class="link">Import a file instead<input type="file" id="s-file" accept="audio/*,.wav,.flac,.aif,.aiff,.mp3,.m4a,.ogg,.opus" hidden></label></p>
+    <audio id="s-audio" preload="auto" hidden></audio>
+  </div>
+
+  <!-- place -->
+  <div class="pane form" data-pane="place" hidden>
+    <h2>Where was it recorded?</h2>
+    <p class="hint">Use the device’s position, place it on the map, or type coordinates.</p>
+    <p class="loc" id="p-loc">Not set</p>
+    <div class="row">
+      <button type="button" class="btn" id="p-gps">Use my position</button>
+      <button type="button" class="btn" id="p-map">Place on the map</button>
+    </div>
+    <div class="row two">
+      <label class="field"><span>Latitude</span><input id="p-lat" inputmode="decimal" placeholder="46.4983"></label>
+      <label class="field"><span>Longitude</span><input id="p-lng" inputmode="decimal" placeholder="11.3548"></label>
+    </div>
+    <label class="field"><span>Place name</span><input id="p-place" placeholder="Filled in from the coordinates" autocomplete="off"></label>
+    <div class="nav-row"><button type="button" class="btn ghost" data-go="take">Back</button><button type="button" class="btn solid" id="p-next">Continue</button></div>
+  </div>
+
+  <!-- describe -->
+  <div class="pane form" data-pane="describe" hidden>
+    <h2>Describe it</h2>
+    <p class="hint">A title is enough. Everything else helps future listeners.</p>
+    <label class="field"><span>Title</span><input id="d-title" maxlength="140" placeholder="Courtyard, early morning"></label>
+    <label class="field"><span>Notes</span><textarea id="d-notes" rows="4" maxlength="2000" placeholder="What can be heard, and why it mattered to you"></textarea></label>
+    <fieldset class="field"><legend>Tags <small id="d-tagcount">up to three</small></legend><div class="tagrow" id="d-tags"></div></fieldset>
+    <div class="row two">
+      <label class="field"><span>Recorded</span><input id="d-when" type="datetime-local"></label>
+      <label class="field"><span>Equipment</span><input id="d-equip" maxlength="160" placeholder="Phone microphone"></label>
+    </div>
+    <div class="field"><span class="lbl">Photo</span>
+      <div class="photo-row">
+        <div class="photo" id="d-photo">None</div>
+        <label class="btn">Choose a photo<input type="file" id="d-photo-in" accept="image/*" hidden></label>
+        <button type="button" class="btn quiet" id="d-photo-clear" hidden>Remove</button>
+      </div>
+    </div>
+    <div class="nav-row"><button type="button" class="btn ghost" data-go="place">Back</button><button type="button" class="btn solid" id="d-next">Continue</button></div>
+  </div>
+
+  <!-- publish -->
+  <div class="pane form" data-pane="publish" hidden>
+    <h2>Who can hear it?</h2>
+    <div class="choice" role="radiogroup" aria-label="Visibility">
+      <label><input type="radio" name="vis" value="public" checked><span><strong>On the public map</strong>Anyone exploring Planet Sound can find and play it.</span></label>
+      <label><input type="radio" name="vis" value="private"><span><strong>Only me</strong>Kept in your archive. You can publish it later.</span></label>
+    </div>
+    <label class="check block"><input type="checkbox" id="u-dl"> Let others download the original file</label>
+    <label class="field"><span>Credit as</span><input id="u-credit" maxlength="80" placeholder="Your name, or leave empty"></label>
+    <p class="hint" id="u-key-note"></p>
+    <div class="progress" id="u-progress" hidden><div></div></div>
+    <p class="s-msg" id="u-msg" role="status"></p>
+    <div class="nav-row"><button type="button" class="btn ghost" data-go="describe">Back</button><button type="button" class="btn solid" id="u-go">Publish</button></div>
+  </div>
+</section>
+
+<!-- DIALOGS -->
+<dialog class="sheet" id="you">
+  <form method="dialog" class="sheet-head"><h2>Your archive</h2><button class="x" aria-label="Close" value="close"></button></form>
+  <div class="sheet-body" id="you-body"></div>
+</dialog>
+
+<dialog class="sheet small" id="ask">
+  <h2 id="ask-title"></h2>
+  <p id="ask-body"></p>
+  <div class="ask-extra" id="ask-extra"></div>
+  <div class="row end"><button type="button" class="btn ghost" id="ask-no">Cancel</button><button type="button" class="btn solid" id="ask-yes">OK</button></div>
+</dialog>
+
+<dialog class="sheet" id="edit">
+  <form method="dialog" class="sheet-head"><h2>Edit entry</h2><button class="x" aria-label="Close" value="close"></button></form>
+  <div class="sheet-body form">
+    <label class="field"><span>Title</span><input id="e-title" maxlength="140"></label>
+    <label class="field"><span>Notes</span><textarea id="e-notes" rows="4" maxlength="2000"></textarea></label>
+    <fieldset class="field"><legend>Tags <small id="e-tagcount">up to three</small></legend><div class="tagrow" id="e-tags"></div></fieldset>
+    <div class="row two">
+      <label class="field"><span>Recorded</span><input id="e-when" type="datetime-local"></label>
+      <label class="field"><span>Equipment</span><input id="e-equip" maxlength="160"></label>
+    </div>
+    <label class="field"><span>Place name</span><input id="e-place" maxlength="160"></label>
+    <div class="row"><p class="loc" id="e-loc"></p><button type="button" class="btn" id="e-move">Move on the map</button></div>
+    <div class="field"><span class="lbl">Photo</span>
+      <div class="photo-row"><div class="photo" id="e-photo">None</div><label class="btn">Choose a photo<input type="file" id="e-photo-in" accept="image/*" hidden></label><button type="button" class="btn quiet" id="e-photo-clear">Remove</button></div>
+    </div>
+    <div class="choice" role="radiogroup" aria-label="Visibility">
+      <label><input type="radio" name="evis" value="public"><span><strong>On the public map</strong>Anyone can find and play it.</span></label>
+      <label><input type="radio" name="evis" value="private"><span><strong>Only me</strong>Kept in your archive.</span></label>
+    </div>
+    <label class="check block"><input type="checkbox" id="e-dl"> Let others download the original file</label>
+    <label class="field"><span>Credit as</span><input id="e-credit" maxlength="80"></label>
+    <p class="s-msg" id="e-msg" role="status"></p>
+    <div class="row end"><button type="button" class="btn ghost" id="e-cancel">Cancel</button><button type="button" class="btn solid" id="e-save">Save changes</button></div>
+  </div>
+</dialog>
+
+<dialog class="sheet small" id="spot">
+  <form method="dialog" class="sheet-head"><h2 id="spot-title">Recorded here</h2><button class="x" aria-label="Close" value="close"></button></form>
+  <ul class="spot-list" id="spot-list"></ul>
+</dialog>
+
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+<script type="module" src="assets/js/app.js"></script>
+</body>
+</html>

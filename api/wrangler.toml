@@ -1,0 +1,25 @@
+# Planet Sound API — Cloudflare Worker
+# Deploy steps are in ../README.md (section "Backend").
+name = "planet-sound-api"
+main = "src/index.js"
+compatibility_date = "2026-09-01"
+
+# Who may call the API from a browser (comma separated). localhost is always allowed.
+[vars]
+ALLOWED_ORIGINS = "https://planetsound.danielbovolon.com"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "planet-sound"
+database_id = "ec4b3456-5393-4d03-b79f-6bc910e55674"
+
+[[r2_buckets]]
+binding = "MEDIA"
+bucket_name = "planet-sound-media"
+
+# Clean up abandoned uploads once a day (free on the Workers free plan).
+[triggers]
+crons = ["17 4 * * *"]
+
+[observability]
+enabled = true

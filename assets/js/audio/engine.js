@@ -1,0 +1,323 @@
+/* Planet Sound — audio engine (main thread).
+ *
+ * Recording path:  microphone → AudioWorklet → worker (FLAC 24-bit + analysis)
+ * Import path:     WAV → parsed here → worker (FLAC at native bit depth)
+ *                  anything else → kept untouched as the master, decoded only
+ *                  to measure it.
+ *
+ * Voice processing (echo cancellation, noise suppression, auto gain) is
+ * switched off wherever the browser allows it: a field recording should be
+ * what the microphone heard, not what a call-quality pipeline made of it.
+ */
+
+const here = import.meta.url;
+const MAX_IMPORT_BYTES = 500 * 1024 * 1024;
+
+export function supportsRecording() {
+  return !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.AudioWorkletNode);
+}
+
+export async function listInputs() {
+  try {
+    const all = await navigator.mediaDevices.enumerateDevices();
+    return all.filter(d => d.kind === 'audioinput');
+  } catch { return []; }
+}
+
+export async function openInput(deviceId) {
+  const base = { echoCancellation: false, noiseSuppression: false, autoGainControl: false, channelCount: { ideal: 2 } };
+  if (deviceId) base.deviceId = { exact: deviceId };
+  let stream;
+  try { stream = await navigator.mediaDevices.getUserMedia({ audio: base }); }
+  catch (e) {
+    if (e && (e.name === 'NotAllowedError' || e.name === 'SecurityError')) throw e;
+    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  }
+  const track = stream.getAudioTracks()[0];
+  const s = (track.getSettings && track.getSettings()) || {};
+  return {
+    stream,
+    info: {
+      label: track.label || 'Microphone',
+      deviceId: s.deviceId || '',
+      channels: Math.max(1, Math.min(2, s.channelCount || 1)),
+      sampleRate: s.sampleRate || null,
+      processingOff: s.echoCancellation === false && s.noiseSuppression === false && s.autoGainControl !== true,
+    },
+  };
+}
+
+export class Recorder {
+  /**
+   * @param {MediaStream} stream
+   * @param {{channels:number, sampleRate?:number|null, onMeter?:Function, onProgress?:Function}} o
+   */
+  constructor(stream, o) {
+    this.stream = stream; this.o = o;
+    this.channels = o.channels || 1;
+    this.state = 'idle';
+  }
+  async arm() {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    try { this.ctx = o_rate(this.o.sampleRate) ? new AC({ sampleRate: this.o.sampleRate, latencyHint: 'interactive' }) : new AC(); }
+    catch { this.ctx = new AC(); }
+    await this.ctx.audioWorklet.addModule(new URL('./capture-worklet.js', here));
+    this.src = this.ctx.createMediaStreamSource(this.stream);
+    this.node = new AudioWorkletNode(this.ctx, 'ps-capture', {
+      numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [1],
+      channelCount: this.channels, channelCountMode: 'explicit', channelInterpretation: 'discrete',
+      processorOptions: { channels: this.channels },
+    });
+    this.node.port.onmessage = e => { if (e.data.meter && this.o.onMeter) this.o.onMeter(e.data.meter); };
+    const mute = this.ctx.createGain(); mute.gain.value = 0;
+    this.src.connect(this.node); this.node.connect(mute); mute.connect(this.ctx.destination);
+    if (this.ctx.state === 'suspended') await this.ctx.resume();
+    this.sampleRate = this.ctx.sampleRate;
+    this.state = 'armed';
+  }
+  record() {
+    this.worker = new Worker(new URL('./take-worker.js', here), { type: 'module' });
+    const ch = new MessageChannel();
+    this.worker.postMessage({ type: 'init', sampleRate: this.sampleRate, channels: this.channels, bits: 24, port: ch.port2 }, [ch.port2]);
+    this.worker.onmessage = e => { if (e.data.type === 'progress' && this.o.onProgress) this.o.onProgress(e.data); };
+    this.node.port.postMessage({ port: ch.port1 }, [ch.port1]);
+    this.node.port.postMessage({ cmd: 'record' });
+    this.state = 'recording';
+    this.startedAt = new Date();
+  }
+  async stop() {
+    if (this.state !== 'recording') return null;
+    this.state = 'finishing';
+    const done = new Promise(res => {
+      this.worker.onmessage = e => {
+        if (e.data.type === 'progress' && this.o.onProgress) this.o.onProgress(e.data);
+        if (e.data.type === 'done') res(e.data);
+      };
+    });
+    this.node.port.postMessage({ cmd: 'stop' });
+    this.worker.postMessage({ type: 'finish', waitForEnd: true });
+    const { blob, analysis } = await done;
+    this.worker.terminate();
+    this.state = 'armed';
+    return packResult({
+      master: blob, mime: 'audio/flac', ext: 'flac',
+      tech: { codec: 'FLAC', lossless: true, sampleRate: this.sampleRate, bitDepth: 24, channels: this.channels, source: 'recorded' },
+      analysis, recordedAt: this.startedAt,
+    });
+  }
+  async close() {
+    try { this.node && this.node.port.postMessage({ cmd: 'stop' }); } catch {}
+    try { this.worker && this.worker.terminate(); } catch {}
+    try { this.stream.getTracks().forEach(t => t.stop()); } catch {}
+    try { this.ctx && await this.ctx.close(); } catch {}
+    this.state = 'closed';
+  }
+}
+function o_rate(r) { return typeof r === 'number' && r >= 8000 && r <= 192000; }
+
+/* ---------------- import ---------------- */
+
+export async function importFile(file, onProgress) {
+  if (file.size > MAX_IMPORT_BYTES) throw new Error('That file is larger than 500 MB. Trim it or export a shorter version first.');
+  const head = new Uint8Array(await file.slice(0, 64).arrayBuffer());
+  const tag = String.fromCharCode(...head.subarray(0, 4));
+  if (tag === 'RIFF' && String.fromCharCode(...head.subarray(8, 12)) === 'WAVE') return importWav(file, onProgress);
+  return importOther(file, tag, onProgress);
+}
+
+async function parseWavHeader(file) {
+  const buf = await file.slice(0, Math.min(file.size, 1 << 20)).arrayBuffer();
+  const dv = new DataView(buf);
+  let p = 12, fmt = null, dataStart = -1, dataLen = 0;
+  while (p + 8 <= dv.byteLength) {
+    const id = String.fromCharCode(dv.getUint8(p), dv.getUint8(p + 1), dv.getUint8(p + 2), dv.getUint8(p + 3));
+    const len = dv.getUint32(p + 4, true);
+    if (id === 'fmt ') {
+      let format = dv.getUint16(p + 8, true);
+      const channels = dv.getUint16(p + 10, true), sampleRate = dv.getUint32(p + 12, true);
+      const blockAlign = dv.getUint16(p + 20, true), bits = dv.getUint16(p + 22, true);
+      if (format === 0xfffe && len >= 40) format = dv.getUint16(p + 32, true);
+      fmt = { format, channels, sampleRate, blockAlign, bits };
+    } else if (id === 'data') {
+      dataStart = p + 8; dataLen = Math.min(len || file.size - dataStart, file.size - dataStart);
+      break;
+    }
+    p += 8 + len + (len & 1);
+  }
+  if (!fmt || dataStart < 0) throw new Error('This WAV file has no readable audio data.');
+  if (!((fmt.format === 1 && [16, 24, 32].includes(fmt.bits)) || (fmt.format === 3 && fmt.bits === 32)))
+    throw new Error(`Unsupported WAV encoding (${fmt.bits}-bit, format ${fmt.format}). Export as 16- or 24-bit PCM.`);
+  return { ...fmt, dataStart, dataLen };
+}
+
+async function importWav(file, onProgress) {
+  const h = await parseWavHeader(file);
+  const channels = Math.min(h.channels, 8);
+  const outBits = h.format === 1 && h.bits === 16 ? 16 : 24;
+  const worker = new Worker(new URL('./take-worker.js', here), { type: 'module' });
+  worker.postMessage({ type: 'init', sampleRate: h.sampleRate, channels, bits: outBits });
+  const frameBytes = h.blockAlign, bps = h.bits / 8;
+  const chunkFrames = 65536;
+  const total = Math.floor(h.dataLen / frameBytes);
+  for (let f = 0; f < total; f += chunkFrames) {
+    const n = Math.min(chunkFrames, total - f);
+    const ab = await file.slice(h.dataStart + f * frameBytes, h.dataStart + (f + n) * frameBytes).arrayBuffer();
+    const dv = new DataView(ab);
+    const chs = Array.from({ length: channels }, () => new Float32Array(n));
+    for (let i = 0; i < n; i++) {
+      const base = i * frameBytes;
+      for (let c = 0; c < channels; c++) {
+        const o = base + c * bps;
+        let v;
+        if (h.format === 3) v = dv.getFloat32(o, true);
+        else if (h.bits === 16) v = dv.getInt16(o, true) / 32768;
+        else if (h.bits === 24) { let x = dv.getUint8(o) | (dv.getUint8(o + 1) << 8) | (dv.getInt8(o + 2) << 16); v = x / 8388608; }
+        else v = dv.getInt32(o, true) / 2147483648;
+        chs[c][i] = v;
+      }
+    }
+    worker.postMessage({ type: 'data', chs }, chs.map(c => c.buffer));
+    if (onProgress) onProgress({ fraction: (f + n) / total });
+  }
+  const res = await new Promise(r => { worker.onmessage = e => { if (e.data.type === 'done') r(e.data); }; worker.postMessage({ type: 'finish' }); });
+  worker.terminate();
+  return packResult({
+    master: res.blob, mime: 'audio/flac', ext: 'flac',
+    tech: { codec: 'FLAC', lossless: true, sampleRate: h.sampleRate, bitDepth: outBits, channels, source: 'imported', convertedFrom: 'WAV' },
+    analysis: res.analysis, recordedAt: file.lastModified ? new Date(file.lastModified) : null,
+  });
+}
+
+function flacInfo(u8) {
+  // STREAMINFO follows "fLaC" + 4-byte block header
+  if (String.fromCharCode(...u8.subarray(0, 4)) !== 'fLaC') return null;
+  const b = u8.subarray(8);
+  const sampleRate = (b[10] << 12) | (b[11] << 4) | (b[12] >> 4);
+  const channels = ((b[12] >> 1) & 7) + 1;
+  const bitDepth = (((b[12] & 1) << 4) | (b[13] >> 4)) + 1;
+  return { sampleRate, channels, bitDepth };
+}
+
+async function importOther(file, tag, onProgress) {
+  const ab = await file.arrayBuffer();
+  const u8 = new Uint8Array(ab, 0, Math.min(64, ab.byteLength));
+  const fi = flacInfo(u8);
+  const name = (file.name || '').toLowerCase();
+  const ext = fi ? 'flac' : (name.match(/\.([a-z0-9]{2,4})$/) || [, ''])[1] ||
+    (file.type.includes('mpeg') ? 'mp3' : file.type.includes('ogg') ? 'ogg' : file.type.includes('webm') ? 'webm' : 'm4a');
+  const codec = fi ? 'FLAC' : ({ mp3: 'MP3', m4a: 'AAC', aac: 'AAC', mp4: 'AAC', ogg: 'Ogg', opus: 'Opus', webm: 'WebM', aif: 'AIFF', aiff: 'AIFF' })[ext] || ext.toUpperCase();
+  const AC = window.AudioContext || window.webkitAudioContext;
+  const ctx = new AC();
+  let buf;
+  try { buf = await ctx.decodeAudioData(ab.slice(0)); }
+  catch { await ctx.close().catch(() => {}); throw new Error('This browser cannot read that file. Try WAV, FLAC, MP3 or M4A.'); }
+  await ctx.close().catch(() => {});
+  const channels = Math.min(buf.numberOfChannels, 8);
+  const worker = new Worker(new URL('./take-worker.js', here), { type: 'module' });
+  worker.postMessage({ type: 'init', sampleRate: buf.sampleRate, channels, encode: false });
+  const step = 65536;
+  for (let o = 0; o < buf.length; o += step) {
+    const chs = Array.from({ length: channels }, (_, c) => buf.getChannelData(c).slice(o, o + step));
+    worker.postMessage({ type: 'data', chs }, chs.map(c => c.buffer));
+    if (onProgress) onProgress({ fraction: Math.min(1, (o + step) / buf.length) });
+  }
+  const res = await new Promise(r => { worker.onmessage = e => { if (e.data.type === 'done') r(e.data); }; worker.postMessage({ type: 'finish' }); });
+  worker.terminate();
+  const lossless = !!fi || ext === 'aif' || ext === 'aiff';
+  return packResult({
+    master: file, mime: file.type || (fi ? 'audio/flac' : 'audio/mpeg'), ext,
+    tech: {
+      codec, lossless,
+      sampleRate: fi ? fi.sampleRate : buf.sampleRate,
+      bitDepth: fi ? fi.bitDepth : null,
+      channels: fi ? fi.channels : buf.numberOfChannels,
+      source: 'imported',
+    },
+    analysis: res.analysis, recordedAt: file.lastModified ? new Date(file.lastModified) : null,
+  });
+}
+
+/* ---------------- results ---------------- */
+
+import { envelopeToPeaks } from './analysis.js';
+
+async function packResult({ master, mime, ext, tech, analysis, recordedAt }) {
+  if (analysis.dualMono) tech.dualMono = true;
+  return {
+    master, mime, ext, tech,
+    duration: analysis.duration,
+    lufs: analysis.lufs,
+    peakDb: analysis.peakDb,
+    backgroundLufs: analysis.backgroundLufs,
+    clippedSamples: analysis.clippedSamples,
+    peaks: envelopeToPeaks(analysis.envelope, 800),
+    spectrogram: await renderSpectrogram(analysis.spectrogram),
+    recordedAt: recordedAt ? recordedAt.toISOString() : null,
+  };
+}
+
+/** Render the grid as an alpha-only PNG: ink density = energy. The page
+ *  prints it through a CSS mask in whatever ink colour the theme uses. */
+export async function renderSpectrogram(g, width = 1600, height = 384) {
+  const cols = g.cols;
+  if (!cols.length) return null;
+  const W = Math.min(width, cols.length * 2), H = height, R = g.rows;
+  // dynamic range: top = 99.5th percentile of all cells, 72 dB below it is paper
+  const sample = [];
+  const stride = Math.max(1, Math.floor(cols.length * R / 40000));
+  for (let i = 0; i < cols.length * R; i += stride) sample.push(cols[Math.floor(i / R)][i % R]);
+  sample.sort((a, b) => a - b);
+  const top = sample[Math.floor(sample.length * 0.995)] ?? -200;
+  if (top < -110) return null;               // digital silence: nothing to print
+  const floor = Math.max(top - 72, -130);
+  const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+  const cx = cv.getContext('2d');
+  const img = cx.createImageData(W, H); const px = img.data;
+  for (let x = 0; x < W; x++) {
+    const a = Math.floor(x * cols.length / W), b = Math.max(a + 1, Math.floor((x + 1) * cols.length / W));
+    for (let y = 0; y < H; y++) {
+      const rf = (1 - (y + 0.5) / H) * (R - 1);
+      const r0 = Math.floor(rf), r1 = Math.min(R - 1, r0 + 1), t = rf - r0;
+      let m = -200;
+      for (let k = a; k < b && k < cols.length; k++) {
+        const v = cols[k][r0] * (1 - t) + cols[k][r1] * t;
+        if (v > m) m = v;
+      }
+      let v = (m - floor) / (top - floor); v = v < 0 ? 0 : v > 1 ? 1 : v;
+      const i = (y * W + x) * 4;
+      px[i] = 0; px[i + 1] = 0; px[i + 2] = 0; px[i + 3] = Math.round(Math.pow(v, 1.15) * 255);
+    }
+  }
+  cx.putImageData(img, 0, 0);
+  return await new Promise(r => cv.toBlob(r, 'image/png'));
+}
+
+/** Replace the VORBIS_COMMENT block of a FLAC blob (catalogue metadata). */
+export async function retagFlac(blob, tags) {
+  const head = new Uint8Array(await blob.slice(0, Math.min(blob.size, 1 << 20)).arrayBuffer());
+  if (String.fromCharCode(...head.subarray(0, 4)) !== 'fLaC') return blob;
+  let p = 4, streaminfo = null, last = false, keep = [];
+  while (!last && p + 4 <= head.length) {
+    last = !!(head[p] & 0x80);
+    const type = head[p] & 0x7f, len = (head[p + 1] << 16) | (head[p + 2] << 8) | head[p + 3];
+    const body = head.slice(p + 4, p + 4 + len);
+    if (type === 0) streaminfo = body; else if (type !== 4 && type !== 1) keep.push({ type, body });
+    p += 4 + len;
+  }
+  if (!streaminfo) return blob;
+  const enc = new TextEncoder();
+  const vendor = enc.encode('Planet Sound FLAC encoder');
+  const entries = [];
+  for (const [k, v] of Object.entries(tags)) for (const one of [].concat(v)) if (one !== undefined && one !== null && String(one) !== '') entries.push(enc.encode(`${k.toUpperCase()}=${one}`));
+  const vcLen = 8 + vendor.length + entries.reduce((a, e) => a + 4 + e.length, 0);
+  const vc = new Uint8Array(vcLen), dv = new DataView(vc.buffer);
+  let o = 0; dv.setUint32(o, vendor.length, true); o += 4; vc.set(vendor, o); o += vendor.length;
+  dv.setUint32(o, entries.length, true); o += 4;
+  for (const e of entries) { dv.setUint32(o, e.length, true); o += 4; vc.set(e, o); o += e.length; }
+  const hdr = (lastB, type, len) => new Uint8Array([(lastB ? 0x80 : 0) | type, (len >> 16) & 0xff, (len >> 8) & 0xff, len & 0xff]);
+  const blocks = [{ type: 0, body: streaminfo }, ...keep, { type: 4, body: vc }];
+  const parts = [new Uint8Array([0x66, 0x4c, 0x61, 0x43])];
+  blocks.forEach((b, i) => { parts.push(hdr(i === blocks.length - 1, b.type, b.body.length), b.body); });
+  parts.push(blob.slice(p));
+  return new Blob(parts, { type: 'audio/flac' });
+}

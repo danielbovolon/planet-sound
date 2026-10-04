@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Planet Sound admin</title>
+<link rel="icon" type="image/png" href="assets/img/favicon.png">
+<link rel="stylesheet" href="assets/css/app.css">
+<script src="config.js"></script>
+<style>
+  body { overflow: auto; }
+  .wrap { max-width: 900px; margin: 0 auto; padding: 32px 20px 80px; }
+  h1 { font: 500 34px/1.1 var(--serif); margin: 0 0 6px; }
+  .stats { color: var(--graphite); margin: 0 0 20px; }
+  .login, .find { display: flex; gap: 8px; margin: 18px 0; }
+  .login input, .find input { flex: 1; min-height: 40px; border: 1px solid var(--rule); border-radius: 8px; padding: 0 12px; background: var(--sheet); }
+  .item { border-top: 1px solid var(--rule); padding: 14px 0; display: grid; grid-template-columns: 1fr auto; gap: 6px 16px; align-items: start; }
+  .item h3 { font: 500 19px/1.25 var(--serif); margin: 0; }
+  .item p { margin: 2px 0; color: var(--graphite); font-size: 14px; }
+  .item audio { width: 100%; grid-column: 1 / -1; height: 34px; }
+  .priv { font: 500 11.5px var(--sans); border: 1px solid var(--graphite); color: var(--graphite); border-radius: 3px; padding: 0 4px; margin-left: 6px; vertical-align: 2px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Admin</h1>
+  <p class="stats" id="stats">Every entry in the archive, public and private. Only you can remove entries.</p>
+  <div class="login" id="login"><input id="tok" type="password" placeholder="Admin token (set with: npx wrangler secret put ADMIN_TOKEN)" aria-label="Admin token"><button class="btn solid" id="go">Open</button></div>
+  <div class="find" id="find" hidden><input id="q" type="search" placeholder="Filter by title, place, credit or number" aria-label="Filter"></div>
+  <div id="list"></div>
+</div>
+<script type="module">
+const API = (window.PLANET_SOUND.apiBase || '').replace(/\/$/, '');
+let token = sessionStorage.getItem('ps-admin') || '', all = [];
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const no = n => 'PS ' + String(n).padStart(4, '0');
+const len = s => s ? `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}` : '';
+async function call(path, opt = {}) {
+  const r = await fetch(API + path, { ...opt, headers: { Authorization: 'Bearer ' + token } });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(d.error || r.status);
+  return d;
+}
+function render() {
+  const q = document.getElementById('q').value.trim().toLowerCase();
+  const rows = all.filter(s => !q || [no(s.seq), s.title, s.place, s.credit].join(' ').toLowerCase().includes(q));
+  document.getElementById('list').innerHTML = rows.map(s => `<div class="item">
+    <div><h3>${no(s.seq)}: ${esc(s.title)}${s.visibility === 'private' ? '<span class="priv">Private</span>' : ''}</h3>
+      <p>${[esc(s.place), esc(s.credit), len(s.duration), new Date(s.created_at).toLocaleDateString()].filter(Boolean).join(', ')}</p></div>
+    <button class="btn danger" data-del="${s.id}" data-label="${esc(no(s.seq) + ': ' + s.title)}">Remove</button>
+    ${s.audio_key ? `<audio controls preload="none" src="${API}/media/${s.audio_key}"></audio>` : ''}
+  </div>`).join('') || '<p class="stats">Nothing matches.</p>';
+}
+async function load() {
+  try {
+    const d = await call('/api/admin/sounds');
+    sessionStorage.setItem('ps-admin', token);
+    document.getElementById('login').hidden = true; document.getElementById('find').hidden = false;
+    all = d.sounds;
+    const st = d.stats;
+    document.getElementById('stats').textContent = `${st.sounds} entries, ${st.listeners} listeners, ${(st.bytes / 1073741824).toFixed(2)} GB stored (R2 free tier: 10 GB).`;
+    render();
+  } catch (e) { document.getElementById('login').hidden = false; document.getElementById('stats').textContent = 'Could not open: ' + e.message; }
+}
+document.getElementById('go').onclick = () => { token = document.getElementById('tok').value.trim(); load(); };
+document.getElementById('tok').onkeydown = e => { if (e.key === 'Enter') document.getElementById('go').click(); };
+document.getElementById('q').oninput = render;
+document.addEventListener('click', async e => {
+  const b = e.target.closest('[data-del]'); if (!b) return;
+  if (!confirm(`Remove ${b.dataset.label}?\n\nThe entry and its files are deleted for good.`)) return;
+  b.disabled = true;
+  try { await call('/api/admin/sounds/' + b.dataset.del, { method: 'DELETE' }); all = all.filter(s => s.id !== b.dataset.del); render(); }
+  catch (err) { alert(err.message); b.disabled = false; }
+});
+if (token) load();
+</script>
+</body>
+</html>
