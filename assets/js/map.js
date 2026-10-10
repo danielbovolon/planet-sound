@@ -128,7 +128,7 @@ function buildStyle(base) {
 }
 
 export function createMap(el, { onSelect, onSpot, onMoveEnd, start }) {
-  let base = 'atlas', data = { type: 'FeatureCollection', features: [] }, selected = null, picking = null;
+  let base = 'imagery', data = { type: 'FeatureCollection', features: [] }, selected = null, picking = null;
   const map = new maplibregl.Map({
     container: el,
     style: buildStyle(base),
@@ -141,16 +141,6 @@ export function createMap(el, { onSelect, onSpot, onMoveEnd, start }) {
   map.touchZoomRotate.disableRotation();
   map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right');
   const hoverPopup = new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 12, className: 'ps-pop' });
-  let loadedTiles = false, failTimer = null;
-
-  map.on('sourcedata', e => { if (e.sourceId === 'ofm' && e.isSourceLoaded) loadedTiles = true; });
-  map.on('error', e => {
-    // If the vector service can't be reached at all, fall back to imagery so
-    // there is still a world to look at.
-    if (base === 'atlas' && !loadedTiles && e && e.sourceId === 'ofm' && !failTimer) {
-      failTimer = setTimeout(() => { if (!loadedTiles) setBase('imagery', true); }, 2500);
-    }
-  });
 
   function applyData() {
     const s = map.getSource('sounds');
@@ -194,13 +184,6 @@ export function createMap(el, { onSelect, onSpot, onMoveEnd, start }) {
   map.on('moveend', () => { onMoveEnd && onMoveEnd(); if (picking) picking.update(); });
   map.on('move', () => { if (picking) picking.update(); });
 
-  function setBase(b, auto) {
-    if (b === base && !auto) return;
-    base = b;
-    map.setStyle(buildStyle(base), { diff: false });
-    document.querySelectorAll('[data-base]').forEach(x => x.setAttribute('aria-pressed', String(x.dataset.base === base)));
-  }
-
   return {
     map,
     setData(sounds) {
@@ -225,7 +208,6 @@ export function createMap(el, { onSelect, onSpot, onMoveEnd, start }) {
       const offsetY = innerWidth <= 860 && !document.getElementById('card').hidden ? -innerHeight * 0.22 : 0;
       map.flyTo({ center: [lng, lat], zoom: z, offset: [offsetX, offsetY], speed: 1.4, curve: 1.5, essential: true });
     },
-    setBase,
     retheme() { map.setStyle(buildStyle(base), { diff: false }); },
     resize() { map.resize(); },
     center() { const c = map.getCenter(); return { lat: c.lat, lng: c.lng, zoom: map.getZoom() }; },

@@ -49,7 +49,9 @@ function corsHeaders(req, env) {
   return {
     'Access-Control-Allow-Origin': ok ? (origin || '*') : allowed[0],
     'Access-Control-Allow-Methods': 'GET,HEAD,POST,PUT,PATCH,DELETE,OPTIONS',
-    'Access-Control-Allow-Headers': 'Authorization,Content-Type',
+    // Range / If-None-Match are sent by the browser's media player when it streams
+    // a recording; without them allowed here, Chrome blocks playback entirely.
+    'Access-Control-Allow-Headers': 'Authorization,Content-Type,Range,If-None-Match,If-Range',
     'Access-Control-Expose-Headers': 'Content-Length,Content-Range,Accept-Ranges,ETag',
     'Access-Control-Max-Age': '86400',
     'Vary': 'Origin',

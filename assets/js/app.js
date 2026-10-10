@@ -42,7 +42,6 @@ const mapCtl = createMap($('#map'), {
   };
   if (!createSky($('#space'), mapCtl.map, { onFail: fallback })) fallback();
 }
-$$('[data-base]').forEach(b => b.addEventListener('click', () => mapCtl.setBase(b.dataset.base)));
 $('#locate').addEventListener('click', () => {
   if (!navigator.geolocation) return toast('This device can’t share its position.');
   navigator.geolocation.getCurrentPosition(p => mapCtl.flyTo(p.coords.latitude, p.coords.longitude, 12), () => toast('Position unavailable.'), { timeout: 10000 });
@@ -394,7 +393,7 @@ async function openYou() {
   renderYou();
   $('#you').showModal();
   if (identity.key) {
-    try { const d = await call('/api/me'); identity.setUser(d.user); renderYou(); }
+    try { await load(); const d = await call('/api/me'); identity.setUser(d.user); renderYou(); }
     catch (e) { if (e.status === 401) renderYou('That listener key is no longer valid on the server.'); }
   }
 }
@@ -405,14 +404,20 @@ async function renderYou(warning) {
   const u = identity.user;
   const key = identity.key;
   const theme = prefs.get('theme', 'auto');
+  const rows = mine.map(s => `<li><button type="button" class="y-item" data-open="${esc(s.id)}"><span class="y-title">${esc(s.title)}</span><small>${esc(s.place || accession(s.no))}${s.visibility === 'private' ? ' · private' : ''}</small></button></li>`).join('');
   body.innerHTML = `
     ${warning ? `<p class="c-flag">${esc(warning)}</p>` : ''}
     <section class="you-sec">
-      <div class="you-stats"><div><b>${mine.length}</b>recordings</div><div><b>${priv.length}</b>only you</div><div><b>${S.collections.length}</b>collections</div></div>
-      ${mine.length ? '<p style="margin-top:10px"><button type="button" class="btn" id="y-mine">Show only mine</button></p>' : ''}
+      <div class="you-stats"><div><b>${mine.length}</b>recordings</div><div><b>${priv.length}</b>you</div><div><b>${S.collections.length}</b>collections</div></div>
     </section>
     ${pending.length ? `<section class="you-sec"><h3>Waiting to upload</h3><p>${pending.length} recording${pending.length === 1 ? ' is' : 's are'} saved on this device and will be published when there is a connection.</p><button type="button" class="btn" id="y-retry">Try now</button></section>` : ''}
     <section class="you-sec">
+      <h3>Your recordings</h3>
+      ${mine.length ? `<ul class="y-list">${rows}</ul>` : '<p>No recordings yet. Everything you publish, public or private, is listed here.</p>'}
+    </section>
+    <details class="you-more">
+      <summary>Settings: key, credit, collections, appearance, export, device</summary>
+      <section class="you-sec">
       <h3>Listener key</h3>
       ${key ? `<p>This key proves your recordings are yours. Use it to open your archive on another device. Keep it private; it can’t be recovered if lost.</p>
         <div class="keybox"><span id="y-key">${esc('PS-' + key.slice(3).replace(/[A-Z0-9]/g, '•'))}</span><button type="button" class="btn quiet" id="y-show">Show</button><button type="button" class="btn" id="y-copy">Copy</button></div>
@@ -434,9 +439,9 @@ async function renderYou(warning) {
       <div class="seg" role="group" aria-label="Appearance">${['auto', 'light', 'dark'].map(t => `<button type="button" data-theme-set="${t}" aria-pressed="${theme === t}">${t === 'auto' ? 'Match device' : t === 'light' ? 'Paper' : 'Night'}</button>`).join('')}</div>
     </section>
     ${mine.length ? `<section class="you-sec"><h3>Export</h3><p>A catalogue of your recordings with links to every original file.</p><button type="button" class="btn" id="y-export">Download catalogue (JSON)</button></section>` : ''}
-    ${key ? `<section class="you-sec"><h3>This device</h3><p>Signing out removes the key from this device only. Without the key you can’t edit or delete your recordings.</p><div class="row"><button type="button" class="btn" id="y-rotate">Replace key</button><button type="button" class="btn danger" id="y-out">Sign out of this device</button></div></section>` : ''}`;
+    ${key ? `<section class="you-sec"><h3>This device</h3><p>Signing out removes the key from this device only. Without the key you can’t edit or delete your recordings.</p><div class="row"><button type="button" class="btn" id="y-rotate">Replace key</button><button type="button" class="btn danger" id="y-out">Sign out of this device</button></div></section>` : ''}    </details>`;
   const on = (id, fn) => { const x = body.querySelector(id); if (x) x.onclick = fn; };
-  on('#y-mine', () => { S.mine = true; $('#only-mine').checked = true; $('#you').close(); setView('index'); });
+  body.querySelectorAll('[data-open]').forEach(b => b.onclick = () => { $('#you').close(); openCard(b.dataset.open, { fly: true }); });
   on('#y-retry', async () => { $('#you').close(); await flushOutbox(true); });
   let shown = false;
   on('#y-show', () => { shown = !shown; body.querySelector('#y-key').textContent = shown ? key : 'PS-' + key.slice(3).replace(/[A-Z0-9]/g, '•'); body.querySelector('#y-show').textContent = shown ? 'Hide' : 'Show'; });
