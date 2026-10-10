@@ -477,6 +477,8 @@ dialog.small h2 { margin-bottom: 8px; }
   width: 100vw; max-width: 100vw; height: 100vh; height: 100dvh; max-height: 100dvh; margin: 0;
   border: 0; border-radius: 0; padding: 0; display: flex; flex-direction: column; background: var(--paper);
 }
+/* a closed dialog must stay hidden: the flex rule above would otherwise show it */
+#you:not([open]) { display: none; }
 #you .sheet-head {
   flex: none; position: sticky; top: 0; z-index: 1; background: var(--sheet); border-bottom: 1px solid var(--rule);
   padding: calc(12px + env(safe-area-inset-top, 0px)) 16px 10px 18px; margin: 0;
