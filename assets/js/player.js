@@ -24,7 +24,6 @@ export class Player {
     this.a.addEventListener('waiting', () => this.onState('loading'));
     this.a.addEventListener('playing', () => this.onState('playing'));
     this.a.addEventListener('error', () => { if (this.sound) this.onState('error', this.a.error); });
-    this.a.addEventListener('stalled', () => { if (this.sound && this.a.networkState === 3) this.onState('error', this.a.error); });
   }
   _graph() {
     if (this.ctx || this.phone) return;
@@ -56,7 +55,9 @@ export class Player {
   load(sound, url) {
     this.stop();
     this.sound = sound;
+    this.seq = (this.seq || 0) + 1;
     this.a.src = url || '';
+    if (this.phone && url) this._prefetch(url, this.seq);
     if (url) this.a.load();
     if ('mediaSession' in navigator && sound) {
       try { navigator.mediaSession.metadata = new MediaMetadata({ title: sound.title || 'Recording', artist: sound.place || 'Planet Sound', album: 'Planet Sound' }); } catch {}
@@ -64,6 +65,19 @@ export class Player {
     this._applyGain();
     this._time();
     this._drawMeter(true);
+  }
+  /* iPhone Safari can stall while streaming a file in pieces, with the play button
+     showing "playing" but no sound. On phones, download the whole recording in the
+     background as soon as it is opened and play that copy; the direct link stays as
+     the fallback until the copy is ready. */
+  _prefetch(url, seq) {
+    const q = () => this.seq === seq;
+    fetch(url).then(r => (r.ok ? r.blob() : null)).then(b => {
+      if (!b || !q() || !this.a.paused) return;
+      if (this.blobUrl) URL.revokeObjectURL(this.blobUrl);
+      this.blobUrl = URL.createObjectURL(b);
+      this.a.src = this.blobUrl; this.a.load();
+    }).catch(() => {});
   }
   async toggle() {
     if (!this.sound || !this.a.src) return;
