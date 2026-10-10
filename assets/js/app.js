@@ -387,6 +387,13 @@ async function collectDialog(id) {
 }
 
 /* ---------------- your archive ---------------- */
+/* A recording belongs to you if the server says so, or if this device published it
+   with the key it holds now (covers queued recordings sent later, offline or in the background). */
+function ownIds() {
+  const m = prefs.get('mine', null);
+  return m && identity.key && m.key === identity.key ? new Set(m.ids || []) : new Set();
+}
+function isMine(s) { return !!s.mine || ownIds().has(s.id); }
 $('#you-btn').addEventListener('click', openYou);
 async function openYou() {
   $('.bar').classList.remove('open');
@@ -399,7 +406,7 @@ async function openYou() {
 }
 async function renderYou(warning) {
   const body = $('#you-body');
-  const mine = S.sounds.filter(s => s.mine), priv = mine.filter(s => s.visibility === 'private');
+  const mine = S.sounds.filter(isMine), priv = mine.filter(s => s.visibility === 'private');
   const pending = await outbox.all().catch(() => []);
   const u = identity.user;
   const key = identity.key;
@@ -416,7 +423,7 @@ async function renderYou(warning) {
       ${mine.length ? `<ul class="y-list">${rows}</ul>` : '<p>No recordings yet. Everything you publish, public or private, is listed here.</p>'}
     </section>
     <details class="you-more">
-      <summary>Settings: key, credit, collections, appearance, export, device</summary>
+      <summary>Settings</summary>
       <section class="you-sec">
       <h3>Listener key</h3>
       ${key ? `<p>This key proves your recordings are yours. Use it to open your archive on another device. Keep it private; it can’t be recovered if lost.</p>
@@ -469,7 +476,7 @@ async function renderYou(warning) {
     $('#you').close();
     const ok = await ask({ title: 'Sign out of this device?', body: 'Make sure you have copied your key first. Without it you can’t edit your recordings.', yes: 'Sign out', danger: true });
     if (!ok) return;
-    identity.clear(); closeCard(); S.full.clear(); await load(); toast('Signed out of this device');
+    identity.clear(); prefs.set('mine', null); closeCard(); S.full.clear(); await load(); toast('Signed out of this device');
   });
 }
 async function useKey(raw) {
@@ -490,7 +497,7 @@ async function useKey(raw) {
   }
 }
 async function exportCatalogue() {
-  const mine = S.sounds.filter(s => s.mine);
+  const mine = S.sounds.filter(isMine);
   const out = [];
   for (const s of mine) {
     let f = S.full.get(s.id);

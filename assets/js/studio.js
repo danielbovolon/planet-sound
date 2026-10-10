@@ -455,5 +455,11 @@ export async function sendEntry(entry, onFraction) {
   }
   const r = await call('/api/sounds', { method: 'POST', body: { ...m, audioKey: entry.keys.audio, spectrogramKey: entry.keys.spectrogram || null, photoKey: entry.keys.photo || null } });
   await outbox.remove(entry.id).catch(() => {});
-  return r.sound;
+  // remember that this device (with this key) published it, so it always shows in Your archive
+  try {
+    const k = identity.key, prev = prefs.get('mine', null);
+    const ids = prev && prev.key === k ? (prev.ids || []) : [];
+    if (k && !ids.includes(r.sound.id)) prefs.set('mine', { key: k, ids: [...ids, r.sound.id].slice(-5000) });
+  } catch {}
+  return { ...r.sound, mine: true };
 }
