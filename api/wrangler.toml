@@ -7,11 +7,17 @@ compatibility_date = "2026-09-01"
 # Who may call the API from a browser (comma separated). localhost is always allowed.
 [vars]
 ALLOWED_ORIGINS = "https://planetsound.danielbovolon.com"
+SITE_URL = "https://planetsound.danielbovolon.com"
+MAIL_FROM = "Planet Sound <no-reply@danielbovolon.com>"
 
 [[d1_databases]]
 binding = "DB"
 database_name = "planet-sound"
 database_id = "ec4b3456-5393-4d03-b79f-6bc910e55674"
+
+# Sends the sign-in emails (Cloudflare Email Sending; set up the sending domain in the dashboard first).
+[[send_email]]
+name = "EMAIL"
 
 [[r2_buckets]]
 binding = "MEDIA"

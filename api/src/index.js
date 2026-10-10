@@ -74,7 +74,9 @@ async function currentUser(req, env, required = true) {
   const h = req.headers.get('Authorization') || '';
   const key = h.startsWith('Bearer ') ? h.slice(7).trim() : '';
   if (!key) { if (required) fail(401, 'This needs your listener key.'); return null; }
-  const u = await env.DB.prepare('SELECT id, name, collections, created_at FROM users WHERE key_hash = ?').bind(await sha256(key)).first();
+  const kh = await sha256(key);
+  const u = await env.DB.prepare('SELECT u.id, u.name, u.email, u.collections, u.created_at FROM device_keys d JOIN users u ON u.id = d.user_id WHERE d.key_hash = ?').bind(kh).first()
+    || await env.DB.prepare('SELECT id, name, email, collections, created_at FROM users WHERE key_hash = ?').bind(kh).first();
   if (!u && required) fail(401, 'That listener key is not recognised.');
   return u || null;
 }
@@ -84,6 +86,7 @@ function isAdmin(req, env) {
 }
 
 async function createIdentity(req, env) {
+  fail(401, 'Sign in with your email to publish.');   // one person, one account: no silent accounts
   const ip = await ipHash(req, env);
   const day = today();
   const row = await env.DB.prepare('SELECT n FROM ip_log WHERE ip_hash = ? AND day = ?').bind(ip, day).first();
@@ -95,6 +98,59 @@ async function createIdentity(req, env) {
     env.DB.prepare('INSERT INTO ip_log (ip_hash, day, n) VALUES (?, ?, 1) ON CONFLICT (ip_hash, day) DO UPDATE SET n = n + 1').bind(ip, day),
   ]);
   return json({ user: { id, name: clip(b.name, 80) }, key }, 201);
+}
+
+/* ---------------- sign-in by email (one link, no password) ---------------- */
+const emailOk = e => e.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(e);
+const hexToken = () => [...crypto.getRandomValues(new Uint8Array(32))].map(b => b.toString(16).padStart(2, '0')).join('');
+
+async function authStart(req, env) {
+  const b = await body(req);
+  const email = String(b.email || '').trim().toLowerCase();
+  if (!emailOk(email)) fail(400, 'That email address does not look right.');
+  const hour = new Date(Date.now() - 3600e3).toISOString();
+  const recent = await env.DB.prepare('SELECT COUNT(*) AS n FROM login_tokens WHERE email = ? AND created_at > ?').bind(email, hour).first();
+  if (recent && recent.n >= 5) fail(429, 'Too many sign-in emails for this address. Wait a little and try again.');
+  const token = hexToken();
+  await env.DB.prepare('INSERT INTO login_tokens (token_hash, email, created_at, expires_at) VALUES (?, ?, ?, ?)')
+    .bind(await sha256(token), email, now(), new Date(Date.now() + 15 * 60e3).toISOString()).run();
+  const link = `${env.SITE_URL}/#login=${token}`;
+  try {
+    await env.EMAIL.send({
+      to: email, from: env.MAIL_FROM, subject: 'Your Planet Sound sign-in link',
+      text: `Open this link to sign in to Planet Sound. It works once and for 15 minutes:\n\n${link}\n\nIf you did not ask for this, you can ignore this email.`,
+    });
+  } catch (e) { console.error(e); fail(502, 'The sign-in email could not be sent. Try again in a few minutes.'); }
+  return json({ ok: true });
+}
+
+async function authVerify(req, env) {
+  const b = await body(req);
+  const th = await sha256(String(b.token || ''));
+  const row = await env.DB.prepare('SELECT email, expires_at, used FROM login_tokens WHERE token_hash = ?').bind(th).first();
+  if (!row || row.used || row.expires_at < now()) fail(400, 'That sign-in link has expired. Ask for a new one.');
+  await env.DB.prepare('UPDATE login_tokens SET used = 1 WHERE token_hash = ?').bind(th).run();
+  let user = await env.DB.prepare('SELECT id, name, created_at FROM users WHERE email = ?').bind(row.email).first();
+  if (!user) {
+    // the first sign-in claims the account this device already holds (if it has no email yet); otherwise a new account
+    const here = await currentUser(req, env, false);
+    if (here && !here.email) {
+      await env.DB.prepare('UPDATE users SET email = ? WHERE id = ?').bind(row.email, here.id).run();
+      user = { id: here.id, name: here.name, created_at: here.created_at };
+    } else {
+      user = { id: crypto.randomUUID(), name: null, created_at: now() };
+      await env.DB.prepare('INSERT INTO users (id, email, name, created_at) VALUES (?, ?, ?, ?)').bind(user.id, row.email, null, user.created_at).run();
+    }
+  }
+  const key = randomKey();
+  await env.DB.prepare('INSERT INTO device_keys (key_hash, user_id, created_at) VALUES (?, ?, ?)').bind(await sha256(key), user.id, now()).run();
+  return json({ key, user: { id: user.id, name: user.name, email: row.email } });
+}
+
+async function authSignOut(req, env) {
+  const h = req.headers.get('Authorization') || '';
+  if (h.startsWith('Bearer ')) await env.DB.prepare('DELETE FROM device_keys WHERE key_hash = ?').bind(await sha256(h.slice(7).trim())).run();
+  return json({ ok: true });
 }
 
 /* ---------------- sounds ---------------- */
@@ -363,7 +419,10 @@ async function route(req, env, url) {
     return json({ ok: true, service: 'planet-sound', sounds: r.n });
   }
   if (p === '/api/identity' && m === 'POST') return createIdentity(req, env);
-  if (p === '/api/me' && m === 'GET') { const u = await currentUser(req, env); return json({ user: { id: u.id, name: u.name, createdAt: u.created_at } }); }
+  if (p === '/api/me' && m === 'GET') { const u = await currentUser(req, env); return json({ user: { id: u.id, name: u.name, email: u.email || null, createdAt: u.created_at } }); }
+  if (p === '/api/auth/start' && m === 'POST') return authStart(req, env);
+  if (p === '/api/auth/verify' && m === 'POST') return authVerify(req, env);
+  if (p === '/api/auth/session' && m === 'DELETE') return authSignOut(req, env);
   if (p === '/api/me' && m === 'PATCH') {
     const u = await currentUser(req, env); const b = await body(req);
     await env.DB.prepare('UPDATE users SET name = ? WHERE id = ?').bind(clip(b.name, 80), u.id).run();
@@ -372,6 +431,7 @@ async function route(req, env, url) {
   if (p === '/api/me/rotate' && m === 'POST') {
     const u = await currentUser(req, env); const key = randomKey();
     await env.DB.prepare('UPDATE users SET key_hash = ? WHERE id = ?').bind(await sha256(key), u.id).run();
+    await env.DB.prepare('DELETE FROM device_keys WHERE user_id = ?').bind(u.id).run();
     return json({ key });
   }
   if (p === '/api/me/collections' && m === 'GET') { const u = await currentUser(req, env); return json({ collections: safeJson(u.collections, []) }); }
