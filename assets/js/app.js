@@ -417,7 +417,7 @@ async function renderYou(warning) {
   body.innerHTML = `
     ${warning ? `<p class="c-flag">${esc(warning)}</p>` : ''}
     ${u && u.email ? `<section class="you-sec"><h3>Signed in</h3><p>${esc(u.email)}. Everything you publish goes to this account, from any device you sign in on.</p><button type="button" class="btn quiet" id="y-signout">Sign out on this device</button></section>`
-      : `<section class="you-sec"><h3>Sign in</h3><p>Sign in with your email to publish. We send you a link; there is no password.</p><div class="row"><input id="y-email" type="email" autocomplete="email" placeholder="you@example.com" style="flex:1;min-height:38px;padding:0 10px;border-radius:8px;border:1px solid var(--rule);background:var(--paper)" aria-label="Email"><button type="button" class="btn solid" id="y-send">Send link</button></div><p id="y-sent" class="you-note" aria-live="polite"></p></section>`}
+      : `<section class="you-sec"><h3>Sign in</h3><p>One account for you, on every device. Sign in once on each device; it stays signed in there.</p><div style="display:grid;gap:8px"><input id="y-email" type="email" autocomplete="username" placeholder="Email" aria-label="Email" style="min-height:38px;padding:0 10px;border-radius:8px;border:1px solid var(--rule);background:var(--paper)"><input id="y-pass" type="password" autocomplete="current-password" placeholder="Password (at least 8 characters)" aria-label="Password" style="min-height:38px;padding:0 10px;border-radius:8px;border:1px solid var(--rule);background:var(--paper)"><div class="row"><button type="button" class="btn solid" id="y-in">Sign in</button><button type="button" class="btn quiet" id="y-new">Create account</button></div></div><p id="y-sent" class="you-note" aria-live="polite"></p><p class="you-note">There is no email recovery yet. If you forget the password, it can be reset from the admin side.</p></section>`}
     <section class="you-sec">
       <div class="you-stats"><div><b>${mine.length}</b>recordings</div><div><b>${priv.length}</b>you</div><div><b>${S.collections.length}</b>collections</div></div>
     </section>
@@ -473,13 +473,20 @@ async function renderYou(warning) {
   });
   body.querySelectorAll('[data-theme-set]').forEach(b => b.onclick = () => { prefs.set('theme', b.dataset.themeSet); applyTheme(); mapCtl.retheme(); redrawCard(); renderYou(); });
   on('#y-export', exportCatalogue);
-  on('#y-send', async () => {
+  const signInWith = async create => {
     const email = body.querySelector('#y-email').value.trim().toLowerCase();
+    const password = body.querySelector('#y-pass').value;
+    const note = body.querySelector('#y-sent');
+    note.textContent = '';
     try {
-      await call('/api/auth/start', { method: 'POST', body: { email }, auth: false });
-      body.querySelector('#y-sent').textContent = `Check ${email}. The link works once, for 15 minutes.`;
-    } catch (e) { toast(e.message); }
-  });
+      const d = await call('/api/auth/signin', { method: 'POST', body: { email, password, create }, auth: false });
+      identity.set(d.key, d.user); S.full.clear(); await load(); renderYou();
+      toast(`Signed in as ${d.user.email}`);
+      flushOutbox(false);
+    } catch (e) { note.textContent = e.message; }
+  };
+  on('#y-in', () => signInWith(false));
+  on('#y-new', () => signInWith(true));
   on('#y-signout', async () => {
     await call('/api/auth/session', { method: 'DELETE' }).catch(() => {});
     identity.clear(); prefs.set('mine', null); closeCard(); S.full.clear(); await load(); renderYou();
@@ -612,15 +619,6 @@ addEventListener('keydown', e => {
   const target = p.get('no') || p.get('id');
   if (target) openCard(target, { fly: true });
   if (identity.key) call('/api/me/collections').then(d => { if (d.collections && d.collections.length && !S.collections.length) { S.collections = d.collections; prefs.set('collections', S.collections); renderCollectionFilter(); } }).catch(() => {});
-  const signIn = location.hash.match(/^#login=([0-9a-f]{64})$/);
-  if (signIn) {
-    history.replaceState(null, '', location.pathname + location.search);
-    try {
-      const d = await call('/api/auth/verify', { method: 'POST', body: { token: signIn[1] } });
-      identity.set(d.key, d.user); S.full.clear(); await load();
-      toast(`Signed in as ${d.user.email}`);
-    } catch (e) { toast(e.message); }
-  }
   flushOutbox(false);
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
 })();

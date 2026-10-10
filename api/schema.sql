@@ -5,22 +5,13 @@ CREATE TABLE IF NOT EXISTS users (
   id          TEXT PRIMARY KEY,
   key_hash    TEXT UNIQUE,               -- SHA-256 of the listener key (legacy; see device_keys)
   email       TEXT,                      -- sign-in address; one account per person
+  password_hash TEXT,                    -- pbkdf2 of the account password
   name        TEXT,                      -- how contributions are credited
   collections TEXT NOT NULL DEFAULT '[]',
   created_at  TEXT NOT NULL,
   ip_hash     TEXT
 );
 CREATE UNIQUE INDEX IF NOT EXISTS users_email ON users (email);
-
--- Sign-in links (token stored only as a hash, valid 15 minutes, single use).
-CREATE TABLE IF NOT EXISTS login_tokens (
-  token_hash TEXT PRIMARY KEY,
-  email      TEXT NOT NULL,
-  created_at TEXT NOT NULL,
-  expires_at TEXT NOT NULL,
-  used       INTEGER NOT NULL DEFAULT 0
-);
-CREATE INDEX IF NOT EXISTS login_tokens_email ON login_tokens (email, created_at);
 
 -- Several devices (listener keys) can belong to one account.
 CREATE TABLE IF NOT EXISTS device_keys (

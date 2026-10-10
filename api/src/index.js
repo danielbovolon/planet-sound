@@ -100,51 +100,64 @@ async function createIdentity(req, env) {
   return json({ user: { id, name: clip(b.name, 80) }, key }, 201);
 }
 
-/* ---------------- sign-in by email (one link, no password) ---------------- */
+/* ---------------- sign-in: one account per person, email + password ---------------- */
+// No email is sent. Sign in once per device; each device then keeps its own listener key.
 const emailOk = e => e.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(e);
-const hexToken = () => [...crypto.getRandomValues(new Uint8Array(32))].map(b => b.toString(16).padStart(2, '0')).join('');
+const PBKDF2_ITER = 100000;   // the most Workers allows
+const b64 = u8 => btoa(String.fromCharCode(...u8));
+const unb64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
 
-async function authStart(req, env) {
-  const b = await body(req);
-  const email = String(b.email || '').trim().toLowerCase();
-  if (!emailOk(email)) fail(400, 'That email address does not look right.');
-  const hour = new Date(Date.now() - 3600e3).toISOString();
-  const recent = await env.DB.prepare('SELECT COUNT(*) AS n FROM login_tokens WHERE email = ? AND created_at > ?').bind(email, hour).first();
-  if (recent && recent.n >= 5) fail(429, 'Too many sign-in emails for this address. Wait a little and try again.');
-  const token = hexToken();
-  await env.DB.prepare('INSERT INTO login_tokens (token_hash, email, created_at, expires_at) VALUES (?, ?, ?, ?)')
-    .bind(await sha256(token), email, now(), new Date(Date.now() + 15 * 60e3).toISOString()).run();
-  const link = `${env.SITE_URL}/#login=${token}`;
-  try {
-    await env.EMAIL.send({
-      to: email, from: env.MAIL_FROM, subject: 'Your Planet Sound sign-in link',
-      text: `Open this link to sign in to Planet Sound. It works once and for 15 minutes:\n\n${link}\n\nIf you did not ask for this, you can ignore this email.`,
-    });
-  } catch (e) { console.error(e); fail(502, 'The sign-in email could not be sent. Try again in a few minutes.'); }
-  return json({ ok: true });
+async function derive(pw, salt, iter) {
+  const k = await crypto.subtle.importKey('raw', new TextEncoder().encode(pw), 'PBKDF2', false, ['deriveBits']);
+  return new Uint8Array(await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt, iterations: iter }, k, 256));
+}
+async function hashPassword(pw) {
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  return `pbkdf2$${PBKDF2_ITER}$${b64(salt)}$${b64(await derive(pw, salt, PBKDF2_ITER))}`;
+}
+async function checkPassword(pw, stored) {
+  const [scheme, iter, s, h] = String(stored).split('$');
+  if (scheme !== 'pbkdf2') return false;
+  const a = await derive(pw, unb64(s), +iter), want = unb64(h);
+  let diff = a.length ^ want.length;
+  for (let i = 0; i < a.length && i < want.length; i++) diff |= a[i] ^ want[i];
+  return diff === 0;
 }
 
-async function authVerify(req, env) {
+async function authSignIn(req, env) {
   const b = await body(req);
-  const th = await sha256(String(b.token || ''));
-  const row = await env.DB.prepare('SELECT email, expires_at, used FROM login_tokens WHERE token_hash = ?').bind(th).first();
-  if (!row || row.used || row.expires_at < now()) fail(400, 'That sign-in link has expired. Ask for a new one.');
-  await env.DB.prepare('UPDATE login_tokens SET used = 1 WHERE token_hash = ?').bind(th).run();
-  let user = await env.DB.prepare('SELECT id, name, created_at FROM users WHERE email = ?').bind(row.email).first();
-  if (!user) {
-    // the first sign-in claims the account this device already holds (if it has no email yet); otherwise a new account
+  const email = String(b.email || '').trim().toLowerCase();
+  const pw = String(b.password || '');
+  if (!emailOk(email)) fail(400, 'That email address does not look right.');
+  if (pw.length < 8 || pw.length > 200) fail(400, 'The password needs at least 8 characters.');
+  // slow down guessing: 30 attempts per address per day
+  const slot = 'login:' + (await sha256(email)).slice(0, 24), day = today();
+  const used = await env.DB.prepare('SELECT n FROM ip_log WHERE ip_hash = ? AND day = ?').bind(slot, day).first();
+  if (used && used.n >= 30) fail(429, 'Too many attempts today. Try again tomorrow.');
+  await env.DB.prepare('INSERT INTO ip_log (ip_hash, day, n) VALUES (?, ?, 1) ON CONFLICT (ip_hash, day) DO UPDATE SET n = n + 1').bind(slot, day).run();
+
+  let user = await env.DB.prepare('SELECT id, name, created_at, password_hash FROM users WHERE email = ?').bind(email).first();
+  if (user && user.password_hash) {
+    if (!(await checkPassword(pw, user.password_hash))) fail(401, 'Wrong email or password.');
+  } else if (user) {
+    // an account with this email but no password yet: this sets it
+    await env.DB.prepare('UPDATE users SET password_hash = ? WHERE id = ?').bind(await hashPassword(pw), user.id).run();
+  } else {
+    if (b.create !== true) fail(401, 'No account for this email. The first time, use “Create account”.');
+    const ph = await hashPassword(pw);
+    // a device that already holds an account with no email (the old silent one) is claimed, so nothing is split
     const here = await currentUser(req, env, false);
     if (here && !here.email) {
-      await env.DB.prepare('UPDATE users SET email = ? WHERE id = ?').bind(row.email, here.id).run();
+      await env.DB.prepare('UPDATE users SET email = ?, password_hash = ? WHERE id = ?').bind(email, ph, here.id).run();
       user = { id: here.id, name: here.name, created_at: here.created_at };
     } else {
       user = { id: crypto.randomUUID(), name: null, created_at: now() };
-      await env.DB.prepare('INSERT INTO users (id, email, name, created_at) VALUES (?, ?, ?, ?)').bind(user.id, row.email, null, user.created_at).run();
+      await env.DB.prepare('INSERT INTO users (id, email, password_hash, name, created_at) VALUES (?, ?, ?, ?, ?)').bind(user.id, email, ph, null, user.created_at).run();
     }
   }
   const key = randomKey();
   await env.DB.prepare('INSERT INTO device_keys (key_hash, user_id, created_at) VALUES (?, ?, ?)').bind(await sha256(key), user.id, now()).run();
-  return json({ key, user: { id: user.id, name: user.name, email: row.email } });
+  return json({ key, user: { id: user.id, name: user.name, email } });
 }
 
 async function authSignOut(req, env) {
@@ -405,6 +418,15 @@ async function admin(req, env, url, parts) {
     return json({ sounds: results, stats });
   }
   if (what === 'sounds' && id && req.method === 'DELETE') return deleteSound(env, id);
+  if (what === 'password' && req.method === 'POST') {       // forgotten password: set a new one for an email
+    const b = await body(req);
+    const email = String(b.email || '').trim().toLowerCase();
+    const pw = String(b.password || '');
+    if (pw.length < 8) fail(400, 'The password needs at least 8 characters.');
+    const r = await env.DB.prepare('UPDATE users SET password_hash = ? WHERE email = ?').bind(await hashPassword(pw), email).run();
+    if (!r.meta || !r.meta.changes) fail(404, 'No account with that email.');
+    return json({ ok: true });
+  }
   fail(404, 'Unknown admin action.');
 }
 
@@ -420,8 +442,7 @@ async function route(req, env, url) {
   }
   if (p === '/api/identity' && m === 'POST') return createIdentity(req, env);
   if (p === '/api/me' && m === 'GET') { const u = await currentUser(req, env); return json({ user: { id: u.id, name: u.name, email: u.email || null, createdAt: u.created_at } }); }
-  if (p === '/api/auth/start' && m === 'POST') return authStart(req, env);
-  if (p === '/api/auth/verify' && m === 'POST') return authVerify(req, env);
+  if (p === '/api/auth/signin' && m === 'POST') return authSignIn(req, env);
   if (p === '/api/auth/session' && m === 'DELETE') return authSignOut(req, env);
   if (p === '/api/me' && m === 'PATCH') {
     const u = await currentUser(req, env); const b = await body(req);

@@ -32,7 +32,7 @@ export async function call(path, { method = 'GET', body, auth = true, headers = 
 export async function ensureIdentity(name) {
   // Publishing needs a signed-in account (sign-in by email). Nothing is created silently.
   if (identity.key && identity.user && identity.user.email) return identity.user;
-  throw new ApiError(401, 'Sign in with your email to publish. Your recording is kept and will publish when you are signed in.');
+  throw new ApiError(401, 'Sign in to publish. Your recording is kept and will publish when you are signed in.');
 }
 
 function xhrPut(url, blob, onProgress, headers = {}) {
