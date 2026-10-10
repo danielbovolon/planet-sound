@@ -81,7 +81,7 @@ export class Recorder {
     if (this.ctx && this.ctx.state !== 'running') this.ctx.resume().catch(() => {});
     this.worker = new Worker(new URL('./take-worker.js', here), { type: 'module' });
     const ch = new MessageChannel();
-    this.worker.postMessage({ type: 'init', sampleRate: this.sampleRate, channels: this.channels, bits: 24, port: ch.port2 }, [ch.port2]);
+    this.worker.postMessage({ type: 'init', sampleRate: this.sampleRate, channels: this.channels, bits: 24, format: 'wav', port: ch.port2 }, [ch.port2]);
     this.worker.onmessage = e => { if (e.data.type === 'progress' && this.o.onProgress) this.o.onProgress(e.data); };
     this.node.port.postMessage({ port: ch.port1 }, [ch.port1]);
     this.node.port.postMessage({ cmd: 'record' });
@@ -103,8 +103,8 @@ export class Recorder {
     this.worker.terminate();
     this.state = 'armed';
     return packResult({
-      master: blob, mime: 'audio/flac', ext: 'flac',
-      tech: { codec: 'FLAC', lossless: true, sampleRate: this.sampleRate, bitDepth: 24, channels: this.channels, source: 'recorded' },
+      master: blob, mime: 'audio/wav', ext: 'wav',
+      tech: { codec: 'WAV', lossless: true, sampleRate: this.sampleRate, bitDepth: 24, channels: this.channels, source: 'recorded' },
       analysis, recordedAt: this.startedAt,
     });
   }
@@ -158,7 +158,7 @@ async function importWav(file, onProgress) {
   const channels = Math.min(h.channels, 8);
   const outBits = h.format === 1 && h.bits === 16 ? 16 : 24;
   const worker = new Worker(new URL('./take-worker.js', here), { type: 'module' });
-  worker.postMessage({ type: 'init', sampleRate: h.sampleRate, channels, bits: outBits });
+  worker.postMessage({ type: 'init', sampleRate: h.sampleRate, channels, bits: outBits, format: 'wav' });
   const frameBytes = h.blockAlign, bps = h.bits / 8;
   const chunkFrames = 65536;
   const total = Math.floor(h.dataLen / frameBytes);
@@ -185,8 +185,8 @@ async function importWav(file, onProgress) {
   const res = await new Promise(r => { worker.onmessage = e => { if (e.data.type === 'done') r(e.data); }; worker.postMessage({ type: 'finish' }); });
   worker.terminate();
   return packResult({
-    master: res.blob, mime: 'audio/flac', ext: 'flac',
-    tech: { codec: 'FLAC', lossless: true, sampleRate: h.sampleRate, bitDepth: outBits, channels, source: 'imported', convertedFrom: 'WAV' },
+    master: res.blob, mime: 'audio/wav', ext: 'wav',
+    tech: { codec: 'WAV', lossless: true, sampleRate: h.sampleRate, bitDepth: outBits, channels, source: 'imported', convertedFrom: 'WAV' },
     analysis: res.analysis, recordedAt: file.lastModified ? new Date(file.lastModified) : null,
   });
 }
@@ -238,6 +238,48 @@ async function importOther(file, tag, onProgress) {
     },
     analysis: res.analysis, recordedAt: file.lastModified ? new Date(file.lastModified) : null,
   });
+}
+
+/* Insert a BWF 'bext' chunk (title, originator, origination date and time) into a WAV blob. */
+export async function addBext(blob, m) {
+  const head = new Uint8Array(await blob.slice(0, Math.min(blob.size, 1 << 16)).arrayBuffer());
+  const dv = new DataView(head.buffer);
+  if (String.fromCharCode(...head.subarray(0, 4)) !== 'RIFF' || String.fromCharCode(...head.subarray(8, 12)) !== 'WAVE') return blob;
+  let p = 12, fmt = null, data = -1;
+  while (p + 8 <= head.length) {
+    const id = String.fromCharCode(...head.subarray(p, p + 4)), len = dv.getUint32(p + 4, true);
+    if (id === 'fmt ') fmt = blob.slice(p, p + 8 + len);
+    if (id === 'data') { data = p; break; }
+    p += 8 + len + (len & 1);
+  }
+  if (!fmt || data < 0) return blob;
+  const enc = new TextEncoder(), fill = (s, n) => { const b = new Uint8Array(n); b.set(enc.encode(s).subarray(0, n)); return b; };
+  const when = m.recordedAt ? new Date(m.recordedAt) : new Date();
+  const pad2 = n => String(n).padStart(2, '0');
+  const date = `${when.getFullYear()}-${pad2(when.getMonth() + 1)}-${pad2(when.getDate())}`;
+  const time = `${pad2(when.getHours())}:${pad2(when.getMinutes())}:${pad2(when.getSeconds())}`;
+  const history = enc.encode(`A=PCM,M=${m.channels === 1 ? 'mono' : 'stereo'},O=Planet Sound`);
+  const body = 602 + history.length + (history.length & 1);
+  const bext = new Uint8Array(8 + body), bdv = new DataView(bext.buffer);
+  bext.set(enc.encode('bext'), 0); bdv.setUint32(4, body, true);
+  let o = 8;
+  bext.set(fill(`${m.title || ''} · ${m.place || ''}`.trim(), 256), o); o += 256;
+  bext.set(fill('Planet Sound', 32), o); o += 32;
+  bext.set(fill(String(m.id || ''), 32), o); o += 32;
+  bext.set(fill(date, 10), o); o += 10;
+  bext.set(fill(time, 8), o); o += 8;
+  o += 8;                            // TimeReference (samples since midnight): left zero
+  bdv.setUint16(o, 1, true); o += 2; // Version
+  o += 64;                           // UMID
+  bdv.setInt16(o, 0x7fff, true); bdv.setInt16(o + 2, 0x7fff, true); bdv.setInt16(o + 4, 0x7fff, true); bdv.setInt16(o + 6, 0x7fff, true); o += 8;
+  o += 180;                          // Reserved
+  bext.set(history, o);
+  const riffLen = 4 + fmt.size + bext.length + (blob.size - data);
+  const hdr = new DataView(new ArrayBuffer(12));
+  hdr.setUint8(0, 0x52); hdr.setUint8(1, 0x49); hdr.setUint8(2, 0x46); hdr.setUint8(3, 0x46);
+  hdr.setUint32(4, riffLen, true);
+  hdr.setUint8(8, 0x57); hdr.setUint8(9, 0x41); hdr.setUint8(10, 0x56); hdr.setUint8(11, 0x45);
+  return new Blob([hdr.buffer, fmt, bext, blob.slice(data)], { type: 'audio/wav' });
 }
 
 /* ---------------- results ---------------- */

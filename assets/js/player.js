@@ -79,7 +79,7 @@ export class Player {
     const q = () => this.seq === seq;
     fetch(url).then(r => (r.ok ? r.blob() : null)).then(async b => {
       if (!b || !q() || !this.a.paused) return;
-      if (this.needWav) { try { b = await this._toWav(b); } catch (e) { console.warn('WAV copy failed', e); } }
+      if (this.needWav && !/\.wav$/i.test(url)) { try { b = await this._toWav(b); } catch (e) { console.warn('WAV copy failed', e); } }
       if (!q() || !this.a.paused) return;
       if (this.blobUrl) URL.revokeObjectURL(this.blobUrl);
       this.blobUrl = URL.createObjectURL(b);

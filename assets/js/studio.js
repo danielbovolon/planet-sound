@@ -1,6 +1,6 @@
 /* The recorder and the publishing steps. */
 import { $, $$, fmtBytes, fmtDb, fmtFormat, fmtTime, toast, ask, tagButtons, toLocalInput, fromLocalInput, placeName, fmtCoords } from './ui.js';
-import { supportsRecording, listInputs, openInput, Recorder, importFile, retagFlac } from './audio/engine.js';
+import { supportsRecording, listInputs, openInput, Recorder, importFile, retagFlac, addBext } from './audio/engine.js';
 import { ensureIdentity, upload, call, identity } from './api.js';
 import { outbox, prefs } from './store.js';
 import { drawWave } from './player.js';
@@ -410,7 +410,9 @@ async function publish() {
     clippedSamples: take.clippedSamples, peaks: take.peaks, tech: take.tech,
   };
   let master = take.master;
-  if (take.mime === 'audio/flac' && take.tech.source !== 'imported' || take.tech.convertedFrom) {
+  if (take.mime === 'audio/wav' && take.tech.source === 'recorded') {
+    master = await addBext(master, { title: meta.title, place: meta.place, id: meta.id, recordedAt: meta.recordedAt, channels: take.tech.channels });
+  } else if (take.mime === 'audio/flac' && take.tech.source !== 'imported') {
     master = await retagFlac(master, {
       TITLE: meta.title, ARTIST: credit, DATE: meta.recordedAt, LOCATION: meta.place,
       COORDINATES: `${meta.lat.toFixed(6)},${meta.lng.toFixed(6)}`, DESCRIPTION: meta.notes, GENRE: 'Field recording',
