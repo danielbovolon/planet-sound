@@ -165,7 +165,7 @@ const player = new Player({
     $('#c-play').classList.toggle('on', on);
     $('#c-play').setAttribute('aria-label', on ? 'Pause' : 'Play');
     $('#c-sono').classList.toggle('playing', on);
-    $('#c-status').textContent = st === 'loading' ? 'Loading…' : st === 'error' ? 'This recording could not be played here. Try downloading it, or another browser.' : '';
+    $('#c-status').textContent = st === 'loading' ? 'Loading…' : st === 'error' ? `This recording could not be played here${err && err.code ? ` (player code ${err.code})` : ''}. Try downloading it, or another browser.` : '';
   },
 });
 let seeking = false;

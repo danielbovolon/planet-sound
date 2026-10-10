@@ -8,7 +8,11 @@ const TARGET = -20, CEILING = -1;
 export class Player {
   constructor({ audio, onTime, onState, meter }) {
     this.a = audio; this.onTime = onTime; this.onState = onState; this.meterCv = meter;
-    this.a.crossOrigin = 'anonymous';
+    // Phones (iPhone Safari especially) are strict about cross-origin media: with crossOrigin set, the
+    // Range preflight can fail and playback stops. On touch devices play the file plainly instead, and
+    // do the level matching with the element's own volume (attenuation only) rather than a Web Audio graph.
+    this.phone = !!(window.matchMedia && matchMedia('(pointer: coarse)').matches);
+    if (!this.phone) this.a.crossOrigin = 'anonymous';
     this.a.preload = 'metadata';
     this.levelMatch = true; this.sound = null; this.ctx = null; this.raf = 0;
     this.hold = [-90, -90]; this.holdT = [0, 0]; this.level = [-90, -90];
@@ -20,9 +24,10 @@ export class Player {
     this.a.addEventListener('waiting', () => this.onState('loading'));
     this.a.addEventListener('playing', () => this.onState('playing'));
     this.a.addEventListener('error', () => { if (this.sound) this.onState('error', this.a.error); });
+    this.a.addEventListener('stalled', () => { if (this.sound && this.a.networkState === 3) this.onState('error', this.a.error); });
   }
   _graph() {
-    if (this.ctx) return;
+    if (this.ctx || this.phone) return;
     try {
       const AC = window.AudioContext || window.webkitAudioContext;
       this.ctx = new AC();
@@ -45,6 +50,7 @@ export class Player {
   }
   _applyGain() {
     if (this.gain) this.gain.gain.setTargetAtTime(10 ** (this.gainDb() / 20), this.ctx.currentTime, 0.05);
+    else if (this.phone) this.a.volume = Math.max(0, Math.min(1, 10 ** (this.gainDb() / 20)));
   }
   setLevelMatch(on) { this.levelMatch = on; this._applyGain(); }
   load(sound, url) {
