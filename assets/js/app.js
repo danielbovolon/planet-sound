@@ -7,6 +7,7 @@ import { createSpace } from './space.js';
 import { createSky } from './sky.js';
 import { Player, drawWave } from './player.js';
 import { initStudio, sendEntry, openStudio, shrinkImage } from './studio.js';
+import { encodeWav24 } from './audio/engine.js';
 
 const S = {
   sounds: [], byId: new Map(), full: new Map(), me: null,
@@ -411,6 +412,7 @@ async function renderYou(warning) {
   const u = identity.user;
   const key = identity.key;
   const theme = prefs.get('theme', 'auto');
+  const flacs = mine.filter(s => s.tech && s.tech.codec === 'FLAC');
   const rows = mine.map(s => `<li><button type="button" class="y-item" data-open="${esc(s.id)}"><span class="y-title">${esc(s.title)}</span><small>${esc(s.place || accession(s.no))}${s.visibility === 'private' ? ' · private' : ''}</small></button></li>`).join('');
   body.innerHTML = `
     ${warning ? `<p class="c-flag">${esc(warning)}</p>` : ''}
@@ -422,6 +424,7 @@ async function renderYou(warning) {
       <h3>Your recordings</h3>
       ${mine.length ? `<ul class="y-list">${rows}</ul>` : '<p>No recordings yet. Everything you publish, public or private, is listed here.</p>'}
     </section>
+    ${flacs.length ? `<section class="you-sec"><h3>Older recordings</h3><p>${flacs.length} recording${flacs.length === 1 ? ' is' : 's are'} stored as FLAC, which Safari and iPhone can’t always play. Converting makes a WAV copy of each one on the server. Do it on a computer with Brave or Chrome. The original FLAC is kept.</p><button type="button" class="btn" id="y-convert">Convert ${flacs.length} to WAV</button><p id="y-conv" class="you-note" aria-live="polite"></p></section>` : ''}
     <details class="you-more">
       <summary>Settings</summary>
       <section class="you-sec">
@@ -468,6 +471,19 @@ async function renderYou(warning) {
   });
   body.querySelectorAll('[data-theme-set]').forEach(b => b.onclick = () => { prefs.set('theme', b.dataset.themeSet); applyTheme(); mapCtl.retheme(); redrawCard(); renderYou(); });
   on('#y-export', exportCatalogue);
+  on('#y-convert', async () => {
+    const btn = body.querySelector('#y-convert'), note = body.querySelector('#y-conv');
+    btn.disabled = true;
+    let done = 0, failed = 0;
+    for (const s of flacs) {
+      try {
+        await convertToWav(s, p => { note.textContent = `Converting ${done + 1} of ${flacs.length}… ${Math.min(100, Math.round(p * 100))}%`; });
+        done++;
+      } catch (e) { failed++; console.warn('convert failed', s.id, e); }
+    }
+    note.textContent = `${done} converted${failed ? `, ${failed} could not be converted. Try again on a computer with Brave or Chrome` : ''}.`;
+    S.full.clear(); await load(); renderYou();
+  });
   on('#y-rotate', async () => {
     if (!(await ask({ title: 'Replace your key?', body: 'A new key is issued and the old one stops working everywhere. Other devices will need the new key.', yes: 'Replace key' }))) return openYou();
     try { const d = await call('/api/me/rotate', { method: 'POST' }); identity.set(d.key, identity.user); toast('New key issued'); openYou(); } catch (e) { toast(e.message); }
@@ -478,6 +494,20 @@ async function renderYou(warning) {
     if (!ok) return;
     identity.clear(); prefs.set('mine', null); closeCard(); S.full.clear(); await load(); toast('Signed out of this device');
   });
+}
+/* Make a WAV copy of an older FLAC recording and point the entry at it. */
+async function convertToWav(s, onProgress) {
+  const r = await fetch(mediaUrl(s.audio), { cache: 'no-store' });
+  if (!r.ok) throw new Error('download failed');
+  const ab = await r.arrayBuffer();
+  const AC = window.AudioContext || window.webkitAudioContext;
+  const ctx = new AC();
+  let buf;
+  try { buf = await ctx.decodeAudioData(ab); } finally { ctx.close().catch(() => {}); }
+  const blob = encodeWav24(buf);
+  const key = await upload(blob, 'wav', loaded => onProgress && onProgress(loaded / blob.size));
+  await call('/api/sounds/' + s.id, { method: 'PATCH', body: { audioKey: key, codec: 'WAV', lossless: true, bitDepth: 24, sampleRate: buf.sampleRate, channels: Math.min(8, buf.numberOfChannels) } });
+  S.full.delete(s.id);
 }
 async function useKey(raw) {
   const key = String(raw || '').trim().toUpperCase().replace(/\s+/g, '');

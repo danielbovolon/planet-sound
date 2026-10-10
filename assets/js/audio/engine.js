@@ -240,6 +240,28 @@ async function importOther(file, tag, onProgress) {
   });
 }
 
+/** 24-bit PCM WAV from a decoded AudioBuffer (up to eight channels). */
+export function encodeWav24(buf) {
+  const ch = Math.min(8, buf.numberOfChannels), rate = buf.sampleRate, n = buf.length, bytesPer = 3;
+  const dataLen = n * ch * bytesPer;
+  if (dataLen > 0xffffffff - 36) throw new Error('recording too long for a WAV file');
+  const out = new Uint8Array(44 + dataLen), h = new DataView(out.buffer);
+  const str = (o, s) => { for (let i = 0; i < 4; i++) out[o + i] = s.charCodeAt(i); };
+  str(0, 'RIFF'); h.setUint32(4, 36 + dataLen, true); str(8, 'WAVE'); str(12, 'fmt ');
+  h.setUint32(16, 16, true); h.setUint16(20, 1, true); h.setUint16(22, ch, true);
+  h.setUint32(24, rate, true); h.setUint32(28, rate * ch * bytesPer, true);
+  h.setUint16(32, ch * bytesPer, true); h.setUint16(34, 24, true);
+  str(36, 'data'); h.setUint32(40, dataLen, true);
+  const chans = Array.from({ length: ch }, (_, c) => buf.getChannelData(c));
+  let o = 44;
+  for (let i = 0; i < n; i++) for (let c = 0; c < ch; c++) {
+    let v = Math.round(Math.max(-1, Math.min(1, chans[c][i])) * 8388607);
+    if (v < 0) v += 16777216;
+    out[o] = v & 255; out[o + 1] = (v >> 8) & 255; out[o + 2] = (v >> 16) & 255; o += 3;
+  }
+  return new Blob([out], { type: 'audio/wav' });
+}
+
 /* Insert a BWF 'bext' chunk (title, originator, origination date and time) into a WAV blob. */
 export async function addBext(blob, m) {
   const head = new Uint8Array(await blob.slice(0, Math.min(blob.size, 1 << 16)).arrayBuffer());

@@ -215,6 +215,15 @@ async function updateSound(req, env, id) {
   const b = await body(req);
   const f = readFields(b, true);
   let oldPhoto = null;
+  if ('audioKey' in b) {
+    const a = await ownUpload(env, me, b.audioKey, 'audio');
+    f.audio_key = a.key; f.audio_type = a.type; f.audio_bytes = a.bytes;
+    f.codec = clip(b.codec, 24); f.lossless = b.lossless ? 1 : 0;
+    const bd = num(b.bitDepth, 8, 64); if (bd !== null) f.bit_depth = bd;
+    const sr = num(b.sampleRate, 8000, 384000); if (sr !== null) f.sample_rate = sr;
+    const ch = num(b.channels, 1, 8); if (ch !== null) f.channels = ch;
+    await env.DB.prepare('UPDATE uploads SET attached = 1 WHERE key = ?').bind(a.key).run();
+  }
   if ('photoKey' in b) {
     const p = b.photoKey ? await ownUpload(env, me, b.photoKey, 'image') : null;
     f.photo_key = p ? p.key : null;
