@@ -50,10 +50,6 @@
     <canvas id="space" aria-hidden="true"></canvas>
     <div id="map" role="application" aria-label="Map of recordings"></div>
     <div class="map-tools">
-      <div class="seg" role="group" aria-label="Base map">
-        <button type="button" data-base="atlas" aria-pressed="true">Atlas</button>
-        <button type="button" data-base="imagery" aria-pressed="false">Imagery</button>
-      </div>
       <button type="button" class="tool" id="locate" aria-label="Show where I am">
         <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="3.2"/><path d="M10 1.5v3M10 15.5v3M1.5 10h3M15.5 10h3"/><circle cx="10" cy="10" r="6.2" fill="none"/></svg>
       </button>
@@ -82,7 +78,7 @@
       <div class="filters">
         <div class="tagrow" id="tag-filter" role="group" aria-label="Filter by tag"></div>
         <div class="filter-right">
-          <label class="check"><input type="checkbox" id="only-mine"> Only mine</label>
+          <label class="check"><input type="checkbox" id="only-mine"> Your recordings</label>
           <label class="sel"><span class="sr">Sort</span>
             <select id="sort">
               <option value="new">Newest first</option>
