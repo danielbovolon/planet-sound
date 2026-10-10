@@ -52,6 +52,9 @@ export class Player {
     this.sound = sound;
     this.a.src = url || '';
     if (url) this.a.load();
+    if ('mediaSession' in navigator && sound) {
+      try { navigator.mediaSession.metadata = new MediaMetadata({ title: sound.title || 'Recording', artist: sound.place || 'Planet Sound', album: 'Planet Sound' }); } catch {}
+    }
     this._applyGain();
     this._time();
     this._drawMeter(true);
@@ -60,9 +63,10 @@ export class Player {
     if (!this.sound || !this.a.src) return;
     if (!this.a.paused) { this.a.pause(); return; }
     this._graph();
-    if (this.ctx && this.ctx.state === 'suspended') await this.ctx.resume().catch(() => {});
-    try { await this.a.play(); }
-    catch (e) { this.onState('error', e); }
+    // iOS/Safari only starts audio inside the tap itself: resume and play synchronously, never await first.
+    if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume().catch(() => {});
+    const p = this.a.play();
+    if (p && p.catch) p.catch(e => { if (e && e.name !== 'AbortError') this.onState('error', e); });
   }
   stop() { try { this.a.pause(); } catch {} cancelAnimationFrame(this.raf); }
   seek(frac) {
