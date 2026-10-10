@@ -12,6 +12,9 @@ export class Player {
     // Range preflight can fail and playback stops. On touch devices play the file plainly instead, and
     // do the level matching with the element's own volume (attenuation only) rather than a Web Audio graph.
     this.phone = !!(window.matchMedia && matchMedia('(pointer: coarse)').matches);
+    // Safari (desktop and iPhone) can't reliably play FLAC in an audio element. Those browsers get a
+    // 16-bit WAV copy, which plays everywhere. Brave and Chrome keep playing the FLAC directly.
+    this.needWav = this.phone || /^((?!chrome|chromium|android|crios|edg).)*safari/i.test(navigator.userAgent);
     if (!this.phone) this.a.crossOrigin = 'anonymous';
     this.a.preload = 'metadata';
     this.levelMatch = true; this.sound = null; this.ctx = null; this.raf = 0;
@@ -74,12 +77,24 @@ export class Player {
      the fallback until the copy is ready. */
   _prefetch(url, seq) {
     const q = () => this.seq === seq;
-    fetch(url).then(r => (r.ok ? r.blob() : null)).then(b => {
+    fetch(url).then(r => (r.ok ? r.blob() : null)).then(async b => {
       if (!b || !q() || !this.a.paused) return;
+      if (this.needWav) { try { b = await this._toWav(b); } catch (e) { console.warn('WAV copy failed', e); } }
+      if (!q() || !this.a.paused) return;
       if (this.blobUrl) URL.revokeObjectURL(this.blobUrl);
       this.blobUrl = URL.createObjectURL(b);
       this.a.src = this.blobUrl; this.a.load();
     }).catch(() => {});
+  }
+  /* Decode the FLAC with the browser's own decoder and re-pack it as 16-bit PCM WAV.
+     Long recordings are left as they are, to keep memory use sensible. */
+  async _toWav(blob) {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    const ctx = new AC();
+    const data = await blob.arrayBuffer();
+    const audio = await new Promise((res, rej) => { const r = ctx.decodeAudioData(data, res, rej); if (r && r.then) r.then(res, rej); });
+    ctx.close && ctx.close().catch(() => {});
+    return encodeWav(audio);
   }
   async toggle() {
     if (!this.sound || !this.a.src) return;
@@ -154,4 +169,23 @@ export function drawWave(cv, peaks, progress = 0) {
     g.fillRect(x, mid - hh, bar, hh * 2);
   }
   g.globalAlpha = 1;
+}
+
+/** 16-bit PCM WAV from a decoded AudioBuffer (max two channels). */
+export function encodeWav(buf) {
+  const ch = Math.min(2, buf.numberOfChannels), rate = buf.sampleRate, n = buf.length;
+  if (n / rate > 45 * 60) throw new Error('recording too long to convert');
+  const bytes = n * ch * 2, out = new DataView(new ArrayBuffer(44 + bytes));
+  const str = (o, s) => { for (let i = 0; i < s.length; i++) out.setUint8(o + i, s.charCodeAt(i)); };
+  str(0, 'RIFF'); out.setUint32(4, 36 + bytes, true); str(8, 'WAVE'); str(12, 'fmt ');
+  out.setUint32(16, 16, true); out.setUint16(20, 1, true); out.setUint16(22, ch, true);
+  out.setUint32(24, rate, true); out.setUint32(28, rate * ch * 2, true); out.setUint16(32, ch * 2, true); out.setUint16(34, 16, true);
+  str(36, 'data'); out.setUint32(40, bytes, true);
+  const chans = Array.from({ length: ch }, (_, c) => buf.getChannelData(c));
+  let o = 44;
+  for (let i = 0; i < n; i++) for (let c = 0; c < ch; c++) {
+    const v = Math.max(-1, Math.min(1, chans[c][i]));
+    out.setInt16(o, v < 0 ? v * 0x8000 : v * 0x7fff, true); o += 2;
+  }
+  return new Blob([out], { type: 'audio/wav' });
 }
