@@ -57,7 +57,9 @@ export class Player {
     this.sound = sound;
     this.seq = (this.seq || 0) + 1;
     this.a.src = url || '';
-    if (this.phone && url) this._prefetch(url, this.seq);
+    // Every browser: play a downloaded copy (same-origin blob) once it's ready. The streamed link
+    // gave decode errors (code 3) on Brave and iPhone, while the downloaded file plays correctly.
+    if (url) this._prefetch(url, this.seq);
     if (url) this.a.load();
     if ('mediaSession' in navigator && sound) {
       try { navigator.mediaSession.metadata = new MediaMetadata({ title: sound.title || 'Recording', artist: sound.place || 'Planet Sound', album: 'Planet Sound' }); } catch {}
