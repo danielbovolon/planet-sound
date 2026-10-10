@@ -71,11 +71,14 @@ export class Recorder {
     this.node.port.onmessage = e => { if (e.data.meter && this.o.onMeter) this.o.onMeter(e.data.meter); };
     const mute = this.ctx.createGain(); mute.gain.value = 0;
     this.src.connect(this.node); this.node.connect(mute); mute.connect(this.ctx.destination);
-    if (this.ctx.state === 'suspended') await this.ctx.resume();
+    // Don't await: iPhone Safari may never resolve a resume() outside a tap. record() resumes it inside the tap.
+    if (this.ctx.state === 'suspended') this.ctx.resume().catch(() => {});
     this.sampleRate = this.ctx.sampleRate;
     this.state = 'armed';
   }
   record() {
+    // Called from the Record tap: iPhone only lets the audio context start inside a tap, otherwise the take is silent.
+    if (this.ctx && this.ctx.state !== 'running') this.ctx.resume().catch(() => {});
     this.worker = new Worker(new URL('./take-worker.js', here), { type: 'module' });
     const ch = new MessageChannel();
     this.worker.postMessage({ type: 'init', sampleRate: this.sampleRate, channels: this.channels, bits: 24, port: ch.port2 }, [ch.port2]);

@@ -242,6 +242,8 @@ function startRecording() {
   if (!rec) return;
   history = history.slice(-60);
   rec.record();
+  const r = rec;
+  setTimeout(() => { if (rec === r && state === 'recording' && r.ctx && r.ctx.state !== 'running') msg('The phone has not started the microphone. Tap the square to stop, then record again.', true); }, 1500);
   state = 'recording'; t0 = performance.now(); bytes = 0;
   el('s-rec').className = 'big-rec on'; el('s-rec').setAttribute('aria-label', 'Stop recording');
   el('s-input').disabled = true; $('.alt').hidden = true;
