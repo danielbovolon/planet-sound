@@ -116,7 +116,7 @@ async function arm(deviceId) {
     await rec.arm();
     state = 'armed';
     el('s-rec').disabled = false;
-    el('s-info').textContent = `${(rec.sampleRate / 1000).toFixed(rec.sampleRate % 1000 ? 1 : 0)} kHz, 24-bit FLAC, ${info.channels === 1 ? 'mono' : 'stereo'}` +
+    el('s-info').textContent = `${(rec.sampleRate / 1000).toFixed(rec.sampleRate % 1000 ? 1 : 0)} kHz, 24-bit WAV, ${info.channels === 1 ? 'mono' : 'stereo'}` +
       (info.processingOff ? ', voice processing off' : ', the browser may be applying voice processing');
     if (deviceId) prefs.set('input', deviceId);
     const inputs = await listInputs();
@@ -154,7 +154,7 @@ function loop() {
     if (state === 'recording') {
       const s = (performance.now() - t0) / 1000;
       setClock(s);
-      el('s-size').textContent = bytes ? `${fmtBytes(bytes)} FLAC` : '';
+      el('s-size').textContent = bytes ? `${fmtBytes(bytes)} WAV` : '';
       if (s >= MAX_SECONDS) stopRecording();
     }
     raf = requestAnimationFrame(frame);

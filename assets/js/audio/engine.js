@@ -1,7 +1,7 @@
 /* Planet Sound — audio engine (main thread).
  *
- * Recording path:  microphone → AudioWorklet → worker (FLAC 24-bit + analysis)
- * Import path:     WAV → parsed here → worker (FLAC at native bit depth)
+ * Recording path:  microphone → AudioWorklet → worker (24-bit WAV + analysis)
+ * Import path:     WAV → parsed here → worker (24-bit WAV, or native bit depth)
  *                  anything else → kept untouched as the master, decoded only
  *                  to measure it.
  *
