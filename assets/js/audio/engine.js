@@ -271,7 +271,8 @@ export async function addBext(blob, m) {
   o += 8;                            // TimeReference (samples since midnight): left zero
   bdv.setUint16(o, 1, true); o += 2; // Version
   o += 64;                           // UMID
-  bdv.setInt16(o, 0x7fff, true); bdv.setInt16(o + 2, 0x7fff, true); bdv.setInt16(o + 4, 0x7fff, true); bdv.setInt16(o + 6, 0x7fff, true); o += 8;
+  for (let k = 0; k < 5; k++) bdv.setInt16(o + 2 * k, 0x7fff, true);   // loudness: unknown
+  o += 10;
   o += 180;                          // Reserved
   bext.set(history, o);
   const riffLen = 4 + fmt.size + bext.length + (blob.size - data);

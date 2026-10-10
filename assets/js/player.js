@@ -77,7 +77,7 @@ export class Player {
      the fallback until the copy is ready. */
   _prefetch(url, seq) {
     const q = () => this.seq === seq;
-    fetch(url).then(r => (r.ok ? r.blob() : null)).then(async b => {
+    fetch(url, { cache: 'no-store' }).then(r => (r.ok ? r.blob() : null)).then(async b => {
       if (!b || !q() || !this.a.paused) return;
       if (this.needWav && !/\.wav$/i.test(url)) { try { b = await this._toWav(b); } catch (e) { console.warn('WAV copy failed', e); } }
       if (!q() || !this.a.paused) return;

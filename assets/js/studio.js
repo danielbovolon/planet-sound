@@ -330,7 +330,11 @@ function listenBack() {
   if (!audioUrl) audioUrl = URL.createObjectURL(take.master);
   if (a.src !== audioUrl) a.src = audioUrl;
   a.currentTime = 0;
-  a.play().then(() => { el('s-listen').textContent = 'Stop'; }).catch(() => msg('This browser can’t play the file back, but it will be stored as recorded.', true));
+  a.play().then(() => { el('s-listen').textContent = 'Stop'; }).catch(() => {
+    const c = a.error && a.error.code ? ` (player code ${a.error.code})` : '';
+    msg(`This browser can’t play the take back${c}. It is stored as recorded and will play on the map.`, true);
+  });
+  a.addEventListener('error', () => { const c = a.error && a.error.code; if (c) msg(`This browser can’t play the take back (player code ${c}).`, true); }, { once: true });
   a.onended = stopListen;
 }
 function stopListen() { const a = el('s-audio'); try { a.pause(); } catch {} el('s-listen').textContent = 'Listen back'; }

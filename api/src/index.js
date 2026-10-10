@@ -304,7 +304,9 @@ async function serveMedia(req, env, key) {
     }
   }
   const etag = req.headers.get('If-None-Match');
-  if (etag) opts.onlyIf = { etagDoesNotMatch: etag.replace(/"/g, '') };
+  // Never answer a Range request with 304: media players can't use it and fail. Conditional
+  // revalidation is only for plain downloads.
+  if (etag && !range) opts.onlyIf = { etagDoesNotMatch: etag.replace(/"/g, '') };
   const obj = await env.MEDIA.get(key, opts);
   if (!obj) return new Response('Not found', { status: 404 });
   const h = new Headers();
