@@ -307,7 +307,14 @@ async function updateSound(req, env, id) {
   return getSound(req, env, id);
 }
 
-async function deleteSound(env, id) {   // admin only
+async function deleteOwnSound(req, env, id) {   // the owner removes their own recording
+  const u = await currentUser(req, env);
+  const r = await env.DB.prepare('SELECT owner_id FROM sounds WHERE id = ?').bind(id).first();
+  if (!r) fail(404, 'No entry with that id.');
+  if (r.owner_id !== u.id) fail(403, 'Only the owner can remove this recording.');
+  return deleteSound(env, id);
+}
+async function deleteSound(env, id) {   // admin, or the owner via deleteOwnSound
   const r = await env.DB.prepare('SELECT * FROM sounds WHERE id = ?').bind(id).first();
   if (!r) fail(404, 'No entry with that id.');
   const keys = [r.audio_key, r.spec_key, r.photo_key].filter(Boolean);
@@ -466,6 +473,7 @@ async function route(req, env, url) {
     await env.DB.prepare('UPDATE users SET collections = ? WHERE id = ?').bind(text, u.id).run();
     return json({ ok: true });
   }
+  if (parts[1] === 'api' && parts[2] === 'sounds' && parts[3] && !parts[4] && m === 'DELETE') return deleteOwnSound(req, env, parts[3]);
   if (p === '/api/sounds' && m === 'GET') return listSounds(req, env);
   if (p === '/api/sounds' && m === 'POST') return createSound(req, env);
   if (parts[1] === 'api' && parts[2] === 'sounds' && parts[3]) {

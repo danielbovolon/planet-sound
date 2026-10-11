@@ -155,6 +155,7 @@
 
     <div class="c-actions">
       <a class="btn" id="c-dl" hidden>Download</a>
+      <button type="button" class="btn" id="c-specdl" hidden>Download spectrogram (PNG)</button>
       <button type="button" class="btn" id="c-share">Share</button>
       <button type="button" class="btn" id="c-collect">Add to collection</button>
     </div>
@@ -201,11 +202,9 @@
     <p class="s-msg" id="s-msg" role="status"></p>
     <div class="review-row" id="s-review" hidden>
       <button type="button" class="btn" id="s-again">Record again</button>
-      <button type="button" class="btn" id="s-listen">Listen back</button>
       <button type="button" class="btn solid" id="s-keep">Use this take</button>
     </div>
     <p class="alt"><label class="link">Import a file instead<input type="file" id="s-file" accept="audio/*,.wav,.flac,.aif,.aiff,.mp3,.m4a,.ogg,.opus" hidden></label></p>
-    <audio id="s-audio" preload="auto" hidden></audio>
   </div>
 
   <!-- place -->
@@ -297,7 +296,7 @@
     <label class="check block"><input type="checkbox" id="e-dl"> Let others download the original file</label>
     <label class="field"><span>Credit as</span><input id="e-credit" maxlength="80"></label>
     <p class="s-msg" id="e-msg" role="status"></p>
-    <div class="row end"><button type="button" class="btn ghost" id="e-cancel">Cancel</button><button type="button" class="btn solid" id="e-save">Save changes</button></div>
+    <div class="row end"><button type="button" class="btn danger quiet" id="e-delete" style="margin-right:auto">Remove recording</button><button type="button" class="btn ghost" id="e-cancel">Cancel</button><button type="button" class="btn solid" id="e-save">Save changes</button></div>
   </div>
 </dialog>
 

@@ -23,6 +23,7 @@ function applyTheme() {
   document.body.classList.toggle('dark-ui', dark);
 }
 applyTheme();
+applySpecColour();
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { if (prefs.get('theme', 'auto') === 'auto') { applyTheme(); mapCtl && mapCtl.retheme(); redrawCard(); } });
 
 /* ---------------- map ---------------- */
@@ -239,6 +240,7 @@ function fillCard(s, partial) {
     dl.textContent = `Download ${s.tech && s.tech.codec ? s.tech.codec : ext.toUpperCase()}${s.tech && s.tech.audioBytes ? ` (${fmtBytes(s.tech.audioBytes)})` : ''}`;
     dl.hidden = false;
   } else dl.hidden = true;
+  $('#c-specdl').hidden = !s.spectrogram;
   $('#c-owner').hidden = !s.mine;
 }
 function factsHtml(s) {
@@ -324,6 +326,50 @@ $('#e-save').addEventListener('click', async () => {
     $('#edit').close(); toast('Changes saved');
   } catch (e) { $('#e-msg').textContent = e.message; }
   finally { $('#e-save').disabled = false; }
+});
+
+/* ---------------- spectrogram colour, image and removal ---------------- */
+function specKey() { return prefs.get('specColour', 'ink'); }
+function applySpecColour() { document.documentElement.dataset.spec = specKey(); }
+function specColour() {
+  const k = specKey();
+  if (k === 'moss') return '#3F7D4E';
+  return getComputedStyle(document.documentElement).getPropertyValue(k === 'signal' ? '--signal' : '--ink').trim() || '#1E2B4D';
+}
+$('#c-specdl').addEventListener('click', async () => {
+  const s = S.full.get(S.current); if (!s || !s.spectrogram) return;
+  try {
+    const r = await fetch(mediaUrl(s.spectrogram), { cache: 'no-store' });
+    if (!r.ok) throw new Error('download failed');
+    const bmp = await createImageBitmap(await r.blob());
+    const ink = document.createElement('canvas'); ink.width = bmp.width; ink.height = bmp.height;
+    const ic = ink.getContext('2d');
+    ic.fillStyle = specColour(); ic.fillRect(0, 0, ink.width, ink.height);
+    ic.globalCompositeOperation = 'destination-in'; ic.drawImage(bmp, 0, 0);
+    const out = document.createElement('canvas'); out.width = bmp.width; out.height = bmp.height;
+    const oc = out.getContext('2d');
+    oc.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--sheet').trim() || '#F7F7F4';
+    oc.fillRect(0, 0, out.width, out.height); oc.drawImage(ink, 0, 0);
+    out.toBlob(b => {
+      const a = document.createElement('a'); a.href = URL.createObjectURL(b);
+      a.download = `${accession(s.no).replace(' ', '-')} ${s.title} spectrogram.png`; a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    }, 'image/png');
+  } catch (e) { toast('Could not download the spectrogram.'); }
+});
+$('#e-delete').addEventListener('click', async () => {
+  const s = S.full.get(S.current); if (!s) return;
+  if (!(await ask({ title: 'Remove this recording?', body: 'It is taken off the map and out of your archive, with its audio and spectrogram. This cannot be undone.', yes: 'Remove', danger: true }))) return;
+  $('#e-msg').textContent = 'Removing…';
+  try {
+    await call('/api/sounds/' + s.id, { method: 'DELETE' });
+    $('#edit').close(); closeCard();
+    S.full.delete(s.id);
+    setSounds(S.sounds.filter(x => x.id !== s.id));
+    await load();
+    if ($('#you').open) renderYou();
+    toast('Recording removed');
+  } catch (e) { $('#e-msg').textContent = e.message; }
 });
 
 /* ---------------- location picker (shared) ---------------- */
@@ -412,6 +458,7 @@ async function renderYou(warning) {
   const u = identity.user;
   const key = identity.key;
   const theme = prefs.get('theme', 'auto');
+  const spec = prefs.get('specColour', 'ink');
   const flacs = mine.filter(s => s.tech && s.tech.codec === 'FLAC');
   const rows = mine.map(s => `<li><button type="button" class="y-item" data-open="${esc(s.id)}"><span class="y-title">${esc(s.title)}</span><small>${esc(s.place || accession(s.no))}${s.visibility === 'private' ? ' · private' : ''}</small></button></li>`).join('');
   body.innerHTML = `
@@ -450,6 +497,10 @@ async function renderYou(warning) {
       <h3>Appearance</h3>
       <div class="seg" role="group" aria-label="Appearance">${['auto', 'light', 'dark'].map(t => `<button type="button" data-theme-set="${t}" aria-pressed="${theme === t}">${t === 'auto' ? 'Match device' : t === 'light' ? 'Paper' : 'Night'}</button>`).join('')}</div>
     </section>
+    <section class="you-sec">
+      <h3>Spectrogram colour</h3>
+      <div class="seg" role="group" aria-label="Spectrogram colour">${[['ink', 'Blue'], ['signal', 'Red'], ['moss', 'Green']].map(([k, l]) => `<button type="button" data-spec-set="${k}" aria-pressed="${spec === k}">${l}</button>`).join('')}</div>
+    </section>
     ${mine.length ? `<section class="you-sec"><h3>Export</h3><p>A catalogue of your recordings with links to every original file.</p><button type="button" class="btn" id="y-export">Download catalogue (JSON)</button></section>` : ''}
     ${key ? `<section class="you-sec"><h3>This device</h3><p>Signing out removes the key from this device only. Without the key you can’t edit or delete your recordings.</p><div class="row"><button type="button" class="btn" id="y-rotate">Replace key</button><button type="button" class="btn danger" id="y-out">Sign out of this device</button></div></section>` : ''}    </details>`;
   const on = (id, fn) => { const x = body.querySelector(id); if (x) x.onclick = fn; };
@@ -471,6 +522,7 @@ async function renderYou(warning) {
     if (!(await ask({ title: `Delete “${c.name}”?`, body: 'The recordings stay in the archive. Only the collection goes.', yes: 'Delete', danger: true }))) return openYou();
     S.collections = S.collections.filter(x => x.id !== c.id); if (S.collection === c.id) S.collection = ''; saveCollections(); refresh(); openYou();
   });
+  body.querySelectorAll('[data-spec-set]').forEach(b => b.onclick = () => { prefs.set('specColour', b.dataset.specSet); applySpecColour(); renderYou(); });
   body.querySelectorAll('[data-theme-set]').forEach(b => b.onclick = () => { prefs.set('theme', b.dataset.themeSet); applyTheme(); mapCtl.retheme(); redrawCard(); renderYou(); });
   on('#y-export', exportCatalogue);
   const signInWith = async create => {

@@ -205,6 +205,8 @@ span.tag { display: inline-block; }
   height: 170px; background: var(--ink); border-radius: 2px;
   -webkit-mask-size: 100% 100%; mask-size: 100% 100%; -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat;
 }
+html[data-spec="signal"] .sono-img:not(.empty) { background: var(--signal); }
+html[data-spec="moss"] .sono-img:not(.empty) { background: #3F7D4E; }
 .sono-img.empty { background: repeating-linear-gradient(90deg, var(--rule) 0 1px, transparent 1px 6px); -webkit-mask: none; mask: none; opacity: .6; }
 .sono-axis { position: absolute; top: 0; right: 22px; left: 22px; height: 170px; font-size: 10.5px; color: var(--graphite); pointer-events: none; }
 .sono-axis span { position: absolute; right: 0; transform: translateY(-50%); background: color-mix(in srgb, var(--sheet) 80%, transparent); padding: 0 4px; border-radius: 2px; line-height: 1.5; }
@@ -400,12 +402,13 @@ dialog.small h2 { margin-bottom: 8px; }
   body.card-open .rec-btn { display: none; }
   .menu-btn { display: grid; place-items: center; gap: 6px; align-content: center; width: 40px; height: 40px; padding: 0; border: 0; background: none; box-shadow: none; }
   .menu-btn span { display: block; width: 22px; height: 2px; background: var(--ink); box-shadow: 0 0 2px 1px var(--paper); }
+  /* open menu: just the options, top right, over the map with no panel behind them */
   .bar.open .views {
-    display: flex; position: fixed; left: 0; right: 0; background: var(--paper); flex-direction: column; margin: 0; padding: 4px 12px;
+    display: flex; position: fixed; top: calc(var(--bar-h) - 6px); right: 8px; left: auto; z-index: 31;
+    background: none; box-shadow: none; border: 0; flex-direction: column; align-items: flex-end; gap: 2px; margin: 0; padding: 0;
   }
-  .bar.open .views { top: var(--bar-h); border-bottom: 0; }
-  .bar.open .views button { text-align: left; padding: 13px 4px; font-size: 17px; border-radius: 0; box-shadow: none; }
-  .bar.open .views button[aria-pressed="true"] { color: var(--ink); font-weight: 600; }
+  .bar.open .views button { text-align: right; padding: 10px 8px; font-size: 17px; border-radius: 0; box-shadow: none; background: none; }
+  .bar.open .views button[aria-pressed="true"] { color: var(--ink); font-weight: 600; box-shadow: none; }
   .map-tools { bottom: calc(84px + var(--safe-b)); left: 10px; }
   .map-count { left: 10px; top: calc(var(--bar-h) + 8px); }
   .maplibregl-ctrl-bottom-right { bottom: calc(76px + var(--safe-b)); }

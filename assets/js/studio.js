@@ -21,7 +21,6 @@ export function initStudio(d) {
   el('s-rec').addEventListener('click', onRecButton);
   el('s-clip').addEventListener('click', () => { clipOn = false; el('s-clip').classList.remove('on'); });
   el('s-again').addEventListener('click', () => discardTake(true));
-  el('s-listen').addEventListener('click', listenBack);
   el('s-keep').addEventListener('click', () => go('place'));
   el('s-file').addEventListener('change', onFile);
   el('s-input').addEventListener('change', () => arm(el('s-input').value));
@@ -287,7 +286,7 @@ async function adoptTake(r) {
   await releaseInput();
   if (specUrl) URL.revokeObjectURL(specUrl);
   specUrl = r.spectrogram ? URL.createObjectURL(r.spectrogram) : null;
-  el('s-rec').className = 'big-rec review'; el('s-rec').setAttribute('aria-label', 'Listen back'); el('s-rec').disabled = false;
+  el('s-rec').className = 'big-rec review'; el('s-rec').setAttribute('aria-label', 'Play'); el('s-rec').disabled = false;
   el('s-review').hidden = false; $('.alt').hidden = true;
   setClock(r.duration);
   const t = r.tech;
@@ -323,33 +322,26 @@ async function discardTake(rearm) {
   take = null; state = 'off';
   if (rearm) arm();
 }
-// Listen back: the page's own <audio> plays the take first. If the browser refuses it,
-// the take is decoded and played through Web Audio. The context is made inside the tap,
-// which is what iPhone needs to allow sound.
+// Listen back: the big button plays and stops the take. The take is decoded and played
+// through Web Audio. The audio context is created and resumed inside the tap, which iPhone needs.
 let listening = false, listenCtx = null, listenSrc = null;
-function listenBack() {
+async function listenBack() {
   if (!take) return;
   if (listening) { stopListen(); return; }
-  listening = true;
-  el('s-listen').textContent = 'Stop';
+  listening = true; setListenUi(true);
   const AC = window.AudioContext || window.webkitAudioContext;
-  if (AC && !listenCtx) { listenCtx = new AC(); listenCtx.resume().catch(() => {}); }
-  const a = el('s-audio');
-  if (!audioUrl) audioUrl = URL.createObjectURL(take.master);
-  a.src = audioUrl; a.currentTime = 0; a.playsInline = true;
-  a.onended = stopListen;
-  a.play().catch(() => playBuffered());
-}
-async function playBuffered() {
-  if (!listening || listenSrc || !take) return;
+  if (!AC) { stopListen(); msg('This browser can’t play the take back. It is stored as recorded and will play on the map.', true); return; }
+  const ctx = listenCtx || (listenCtx = new AC());
+  const ready = ctx.resume();
+  const owner = take;
   try {
-    if (!listenCtx) { const AC = window.AudioContext || window.webkitAudioContext; listenCtx = new AC(); }
-    await listenCtx.resume();
-    const buf = await listenCtx.decodeAudioData(await take.master.arrayBuffer());
-    const src = listenCtx.createBufferSource();
-    src.buffer = buf; src.connect(listenCtx.destination);
-    src.onended = stopListen;
-    src.start(); listenSrc = src;
+    await ready;
+    if (!owner.decoded) owner.decoded = await ctx.decodeAudioData(await owner.master.arrayBuffer());
+    if (!listening || take !== owner) return;
+    const src = ctx.createBufferSource();
+    src.buffer = owner.decoded; src.connect(ctx.destination);
+    src.onended = () => { if (listenSrc === src) stopListen(); };
+    listenSrc = src; src.start();
   } catch (e) {
     console.warn('listen back', e);
     stopListen();
@@ -358,10 +350,14 @@ async function playBuffered() {
 }
 function stopListen() {
   listening = false;
-  const a = el('s-audio'); try { a.pause(); } catch {}
-  if (listenSrc) { try { listenSrc.onended = null; listenSrc.stop(); } catch {} listenSrc = null; }
+  if (listenSrc) { const s = listenSrc; listenSrc = null; s.onended = null; try { s.stop(); } catch {} }
   if (listenCtx) { listenCtx.close().catch(() => {}); listenCtx = null; }
-  el('s-listen').textContent = 'Listen back';
+  setListenUi(false);
+}
+function setListenUi(on) {
+  const b = el('s-rec');
+  b.setAttribute('aria-label', on ? 'Stop' : 'Play');
+  b.classList.toggle('playing', on);
 }
 function msg(t, err) { const m = el('s-msg'); m.textContent = t; m.classList.toggle('err', !!err); }
 
