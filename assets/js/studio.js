@@ -323,21 +323,46 @@ async function discardTake(rearm) {
   take = null; state = 'off';
   if (rearm) arm();
 }
+// Listen back: the page's own <audio> plays the take first. If the browser refuses it,
+// the take is decoded and played through Web Audio. The context is made inside the tap,
+// which is what iPhone needs to allow sound.
+let listening = false, listenCtx = null, listenSrc = null;
 function listenBack() {
-  const a = el('s-audio');
   if (!take) return;
-  if (!a.paused) { stopListen(); return; }
+  if (listening) { stopListen(); return; }
+  listening = true;
+  el('s-listen').textContent = 'Stop';
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if (AC && !listenCtx) { listenCtx = new AC(); listenCtx.resume().catch(() => {}); }
+  const a = el('s-audio');
   if (!audioUrl) audioUrl = URL.createObjectURL(take.master);
-  if (a.src !== audioUrl) a.src = audioUrl;
-  a.currentTime = 0;
-  a.play().then(() => { el('s-listen').textContent = 'Stop'; }).catch(() => {
-    const c = a.error && a.error.code ? ` (player code ${a.error.code})` : '';
-    msg(`This browser can’t play the take back${c}. It is stored as recorded and will play on the map.`, true);
-  });
-  a.addEventListener('error', () => { const c = a.error && a.error.code; if (c) msg(`This browser can’t play the take back (player code ${c}).`, true); }, { once: true });
+  a.src = audioUrl; a.currentTime = 0; a.playsInline = true;
   a.onended = stopListen;
+  a.play().catch(() => playBuffered());
 }
-function stopListen() { const a = el('s-audio'); try { a.pause(); } catch {} el('s-listen').textContent = 'Listen back'; }
+async function playBuffered() {
+  if (!listening || listenSrc || !take) return;
+  try {
+    if (!listenCtx) { const AC = window.AudioContext || window.webkitAudioContext; listenCtx = new AC(); }
+    await listenCtx.resume();
+    const buf = await listenCtx.decodeAudioData(await take.master.arrayBuffer());
+    const src = listenCtx.createBufferSource();
+    src.buffer = buf; src.connect(listenCtx.destination);
+    src.onended = stopListen;
+    src.start(); listenSrc = src;
+  } catch (e) {
+    console.warn('listen back', e);
+    stopListen();
+    msg('This browser can’t play the take back. It is stored as recorded and will play on the map.', true);
+  }
+}
+function stopListen() {
+  listening = false;
+  const a = el('s-audio'); try { a.pause(); } catch {}
+  if (listenSrc) { try { listenSrc.onended = null; listenSrc.stop(); } catch {} listenSrc = null; }
+  if (listenCtx) { listenCtx.close().catch(() => {}); listenCtx = null; }
+  el('s-listen').textContent = 'Listen back';
+}
 function msg(t, err) { const m = el('s-msg'); m.textContent = t; m.classList.toggle('err', !!err); }
 
 /* ---------------- place ---------------- */
