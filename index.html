@@ -110,8 +110,11 @@
       <p>Recordings made here are captured without the phone’s voice processing (no echo cancelling, noise reduction or automatic gain) and stored losslessly as 24-bit WAV, with a broadcast (BWF) header that carries the title, place and date. Each entry carries its own catalogue card: where and when, who recorded it and with what, and the measured facts of the file — sample rate, bit depth, integrated loudness, peak level and the background level of the place.</p>
       <p>Playback is level-matched, so moving between a quiet forest and a loud market doesn’t throw you. The file itself is never altered.</p>
       <h2>Taking part</h2>
-      <p>You don’t need an account. Your first recording gives you a listener key: it proves the recordings are yours, so only you can edit them, and it lets you open your archive on another device. Keep it somewhere safe; it can’t be recovered if lost.</p>
-      <p>You choose, per recording, whether it joins the public map or stays in your private archive, and whether others may download it.</p>
+      <p>You don’t need an account to listen. To record and publish, sign in with your email and a password. One account holds all your recordings, and you stay signed in on each phone or computer you use. Your email is used only to sign in.</p>
+      <p>You choose, per recording, whether it joins the public map or stays in your private archive, and whether others may download the original recording. You can edit or remove your own recordings at any time.</p>
+      <p>No signal in the field? Record anyway. Recordings wait on your phone until you are back online, then upload by themselves.</p>
+      <h2>On your phone</h2>
+      <p>Add Planet Sound to your home screen to keep it one tap away. On an iPhone, open the site in Safari, tap the Share button and choose <em>Add to Home Screen</em>. On an Android phone, open it in Chrome, tap the menu (⋮) and choose <em>Add to Home screen</em> or <em>Install app</em>. The icon opens the app full screen.</p>
       <h2>Care</h2>
       <p>Please don’t publish private conversations or anything recorded without consent. Entries are curated: the archive keeps the right to remove anything that doesn’t belong here.</p>
       <p class="credit">Map data © OpenStreetMap contributors, tiles by OpenFreeMap; imagery © Esri and its partners. Milky Way panorama: <a href="https://www.eso.org/public/images/eso0932a/" target="_blank" rel="noopener">ESO/S. Brunier</a>, CC BY 4.0.</p>
@@ -155,7 +158,9 @@
 
     <div class="c-actions">
       <a class="btn" id="c-dl" hidden>Download</a>
-      <button type="button" class="btn" id="c-specdl" hidden>Download spectrogram (PNG)</button>
+      <button type="button" class="btn" id="c-specdl" hidden>Download spectrogram</button>
+    </div>
+    <div class="c-actions">
       <button type="button" class="btn" id="c-share">Share</button>
       <button type="button" class="btn" id="c-collect">Add to collection</button>
     </div>
@@ -252,7 +257,7 @@
       <label><input type="radio" name="vis" value="public" checked><span><strong>On the public map</strong>Anyone exploring Planet Sound can find and play it.</span></label>
       <label><input type="radio" name="vis" value="private"><span><strong>Only me</strong>Kept in your archive. You can publish it later.</span></label>
     </div>
-    <label class="check block"><input type="checkbox" id="u-dl"> Let others download the original file</label>
+    <label class="check block"><input type="checkbox" id="u-dl"> Let others download the original recording</label>
     <label class="field"><span>Credit as</span><input id="u-credit" maxlength="80" placeholder="Your name, or leave empty"></label>
     <p class="hint" id="u-key-note"></p>
     <div class="progress" id="u-progress" hidden><div></div></div>
@@ -293,7 +298,7 @@
       <label><input type="radio" name="evis" value="public"><span><strong>On the public map</strong>Anyone can find and play it.</span></label>
       <label><input type="radio" name="evis" value="private"><span><strong>Only me</strong>Kept in your archive.</span></label>
     </div>
-    <label class="check block"><input type="checkbox" id="e-dl"> Let others download the original file</label>
+    <label class="check block"><input type="checkbox" id="e-dl"> Let others download the original recording</label>
     <label class="field"><span>Credit as</span><input id="e-credit" maxlength="80"></label>
     <p class="s-msg" id="e-msg" role="status"></p>
     <div class="row end"><button type="button" class="btn danger quiet" id="e-delete" style="margin-right:auto">Remove recording</button><button type="button" class="btn ghost" id="e-cancel">Cancel</button><button type="button" class="btn solid" id="e-save">Save changes</button></div>

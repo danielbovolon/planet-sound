@@ -239,7 +239,8 @@ html[data-spec="moss"] .sono-img:not(.empty) { background: #3F7D4E; }
 .facts dt { color: var(--graphite); }
 .facts dd { margin: 0; }
 .facts dd small { color: var(--graphite); }
-.c-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; }
+.c-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 20px; }
+.c-actions + .c-actions { margin-top: 8px; }
 .c-owner { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--rule); }
 .c-owner p { margin: 0 0 8px; color: var(--graphite); font-size: 13px; }
 
