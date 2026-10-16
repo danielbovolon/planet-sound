@@ -20,6 +20,7 @@
 <link rel="preload" href="assets/fonts/newsreader-latin-500-normal.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="vendor/maplibre/maplibre-gl.css">
 <link rel="stylesheet" href="assets/css/app.css">
+<link rel="stylesheet" href="assets/css/glass.css">
 <script src="config.js"></script>
 </head>
 <body>
@@ -118,7 +119,10 @@
       <h2>Care</h2>
       <p>Please don’t publish private conversations or anything recorded without consent. Entries are curated: the archive keeps the right to remove anything that doesn’t belong here.</p>
       <p class="credit">Map data © OpenStreetMap contributors, tiles by OpenFreeMap; imagery © Esri and its partners. Milky Way panorama: <a href="https://www.eso.org/public/images/eso0932a/" target="_blank" rel="noopener">ESO/S. Brunier</a>, CC BY 4.0.</p>
-      <p><button type="button" class="btn solid" data-view="map">Start listening</button></p>
+      <div class="row" style="margin-top:6px">
+        <button type="button" class="btn solid" data-view="map">Start listening</button>
+        <button type="button" class="btn" id="share-app">Share Planet Sound</button>
+      </div>
     </article>
   </section>
 </main>
@@ -161,7 +165,8 @@
       <button type="button" class="btn" id="c-specdl" hidden>Download spectrogram</button>
     </div>
     <div class="c-actions">
-      <button type="button" class="btn" id="c-share">Share</button>
+      <button type="button" class="btn" id="c-share">Share sound</button>
+      <button type="button" class="btn" id="c-sharewav" hidden>Share WAV</button>
       <button type="button" class="btn" id="c-collect">Add to collection</button>
     </div>
     <div class="c-owner" id="c-owner" hidden>
@@ -313,5 +318,6 @@
 <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 
 <script type="module" src="assets/js/app.js"></script>
+<script type="module" src="assets/js/share.js"></script>
 </body>
 </html>
