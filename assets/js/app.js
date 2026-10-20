@@ -10,6 +10,8 @@ import { initStudio, sendEntry, openStudio, shrinkImage } from './studio.js';
 import { encodeWav24 } from './audio/engine.js';
 import { initFxUi } from './fxui.js';
 import { fxState } from './fx.js';
+import { initCardPlus } from './cardplus.js';
+import { initContributors } from './contributors.js';
 import { shapedSpectrogramBlob } from './fxexport.js';
 
 const S = {
@@ -101,7 +103,7 @@ async function load() {
   if (cached && !S.sounds.length) setSounds(cached.sounds || [], true);
   try {
     const d = await call('/api/sounds');
-    setSounds(d.sounds);
+    setSounds(d.sounds); window.dispatchEvent(new Event('planet-sound:loaded'));
     try { prefs.set('cache', { at: Date.now(), sounds: d.sounds }); } catch {}
     return true;
   } catch (e) {
@@ -159,6 +161,8 @@ const player = new Player({
   onTime: (t, d) => {
     $('#c-el').textContent = fmtTime(t); $('#c-du').textContent = fmtTime(d);
     const f = d ? t / d : 0;
+    $('#m-el').textContent = fmtTime(t); $('#m-du').textContent = fmtTime(d);
+    if (!seeking) $('#m-seek').value = String(Math.round(f * 1000));
     $('#c-head').style.left = `calc(22px + (100% - 44px) * ${f})`;
     if (innerWidth <= 860) $('#c-head').style.left = `calc(18px + (100% - 36px) * ${f})`;
     if (!seeking) $('#c-seek').value = String(Math.round(f * 1000));
@@ -168,20 +172,31 @@ const player = new Player({
     const on = st === 'playing' || st === 'loading';
     $('#c-play').classList.toggle('on', on);
     $('#c-play').setAttribute('aria-label', on ? 'Pause' : 'Play');
+    $('#m-play').classList.toggle('on', on);
+    $('#m-play').setAttribute('aria-label', on ? 'Pause' : 'Play');
     $('#c-sono').classList.toggle('playing', on);
     $('#c-status').textContent = st === 'loading' ? 'Loading…' : st === 'error' ? `This recording could not be played here${err && err.code ? ` (player code ${err.code})` : ''}. Try downloading it, or another browser.` : '';
   },
 });
 let seeking = false;
+// two play bars, one engine: both only ever drive `player`, and both read their position back from it
 $('#c-play').addEventListener('click', () => player.toggle());
+$('#m-play').addEventListener('click', () => player.toggle());
+$('#m-seek').addEventListener('input', e => { seeking = true; player.seek(e.target.value / 1000); $('#c-sono').classList.add('cued'); });
+$('#m-seek').addEventListener('change', () => { seeking = false; });
 $('#c-seek').addEventListener('input', e => { seeking = true; player.seek(e.target.value / 1000); $('#c-sono').classList.add('cued'); });
 $('#c-seek').addEventListener('change', () => { seeking = false; });
+$('#c-loop').checked = prefs.get('loop', false);
+player.setLoop($('#c-loop').checked);
+$('#c-loop').addEventListener('change', e => { player.setLoop(e.target.checked); prefs.set('loop', e.target.checked); });
 $('#c-lm').checked = prefs.get('levelMatch', true);
 player.setLevelMatch($('#c-lm').checked);
 let fxui = { setSound() {}, shaped: () => false };
 initFxUi({ player, toast }).then(u => { fxui = u; const s = S.current && (S.full.get(S.current) || S.byId.get(S.current)); if (s) fxui.setSound(s); });
 $('#c-lm').addEventListener('change', e => { player.setLevelMatch(e.target.checked); prefs.set('levelMatch', e.target.checked); });
 $('#c-close').addEventListener('click', closeCard);
+const cardPlus = initCardPlus({ card });
+initContributors({ call, getView: () => S.view });
 
 async function openCard(id, { fly = true } = {}) {
   const base = S.byId.get(id);
@@ -204,7 +219,7 @@ async function openCard(id, { fly = true } = {}) {
   }
 }
 function closeCard() {
-  card.hidden = true; document.body.classList.remove('card-open'); player.stop(); S.current = null; mapCtl.select(null);
+  cardPlus.leave(); card.hidden = true; document.body.classList.remove('card-open'); player.stop(); S.current = null; mapCtl.select(null);
   if (location.search) history.replaceState(null, '', location.pathname);
 }
 function redrawCard() { if (S.current && S.full.get(S.current)) fillCard(S.full.get(S.current), false); }
@@ -223,7 +238,7 @@ function fillCard(s, partial) {
   if (partial) {
     if (player.sound && player.sound.id === s.id) return;
     player.load({ ...s, peaks: null }, mediaUrl(s.audio));
-    $('#c-notes').textContent = ''; $('#c-facts').innerHTML = ''; $('#c-photo').hidden = true;
+    $('#c-notes').textContent = ''; $('#c-facts').innerHTML = ''; cardPlus.setPhoto(s.photo ? mediaUrl(s.photo) : null, `Photo taken where ${s.title} was recorded`);
     drawWave($('#c-wave'), null);
   } else {
     if (!player.sound || player.sound.id !== s.id || !player.sound.peaks) {
@@ -232,11 +247,10 @@ function fillCard(s, partial) {
     }
     drawWave($('#c-wave'), s.peaks, 0);
     $('#c-notes').textContent = s.notes || '';
-    const ph = $('#c-photo');
-    if (s.photo) { ph.src = mediaUrl(s.photo); ph.alt = `Photo taken where ${s.title} was recorded`; ph.hidden = false; } else ph.hidden = true;
+    cardPlus.setPhoto(s.photo ? mediaUrl(s.photo) : null, `Photo taken where ${s.title} was recorded`);
     $('#c-facts').innerHTML = factsHtml(s);
   }
-  $('#c-play').disabled = !s.audio;
+  $('#c-play').disabled = !s.audio; $('#m-play').disabled = !s.audio; $('#m-seek').disabled = !s.audio;
   const dl = $('#c-dl');
   dl.hidden = !(s.audio && (s.allowDownload || s.mine));     // Export WAV: the dialog is in share.js
   $('#c-specdl').hidden = !s.spectrogram;

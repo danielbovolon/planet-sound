@@ -133,7 +133,7 @@ export class FxPlayback {
   /** @param {{onEnded?:Function}} cb */
   constructor(cb) {
     this.cb = cb || {}; this.ctx = null; this.node = null; this.buffer = null; this.src = null;
-    this.playing = false; this.offset = 0; this.t0 = 0; this.rate = 1; this.levelDb = 0; this.params = null; this.meters = null;
+    this.playing = false; this.offset = 0; this.t0 = 0; this.rate = 1; this.levelDb = 0; this.params = null; this.meters = null; this.loop = false;
     this.an = null; this.ready = false; this.opening = null;
     this.regionSig = ''; this.bakeTimer = 0; this.bakeSeq = 0; this.region = null; this.baking = false;
   }
@@ -181,12 +181,18 @@ export class FxPlayback {
     this.split.connect(this.an[0], 0); this.split.connect(this.an[1], n > 1 ? 1 : 0);
   }
   get duration() { return this.buffer ? this.buffer.duration : 0; }
-  position() { return this.buffer ? (this.playing ? Math.min(this.buffer.duration, this.offset + (this.ctx.currentTime - this.t0) * this.rate) : this.offset) : 0; }
+  position() {
+    if (!this.buffer) return 0;
+    if (!this.playing) return this.offset;
+    const p = this.offset + (this.ctx.currentTime - this.t0) * this.rate, d = this.buffer.duration;
+    return this.loop ? p % d : Math.min(d, p);
+  }
+  setLoop(on) { this.loop = !!on; if (this.src) this.src.loop = this.loop; }
   _kill() { const s = this.src; this.src = null; if (s) { s.onended = null; try { s.stop(); } catch {} try { s.disconnect(); } catch {} } }
   _start(off) {
     this._kill();
     const s = this.ctx.createBufferSource();
-    s.buffer = this.buffer; s.playbackRate.value = this.rate; s.connect(this.node);
+    s.buffer = this.buffer; s.playbackRate.value = this.rate; s.loop = this.loop; s.connect(this.node);
     s.onended = () => { if (this.src === s) { this.src = null; this.playing = false; this.offset = this.buffer.duration; this._transport(); if (this.cb.onEnded) this.cb.onEnded(); } };
     s.start(0, Math.max(0, Math.min(off, this.buffer.duration - 0.001)));
     this.src = s; this.t0 = this.ctx.currentTime; this.offset = off; this.playing = true; this._transport();

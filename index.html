@@ -23,6 +23,7 @@
 <link rel="stylesheet" href="assets/css/glass.css">
 <link rel="stylesheet" href="assets/css/recorder.css">
 <link rel="stylesheet" href="assets/css/fx.css">
+<link rel="stylesheet" href="assets/css/update4.css">
 <script src="config.js"></script>
 </head>
 <body>
@@ -78,6 +79,7 @@
         <h1>Index</h1>
         <p class="index-sum" id="index-sum"></p>
       </div>
+      <p class="index-contrib" id="index-contrib" hidden><b id="contrib-n">0</b> <span id="contrib-l">contributors</span> <small id="contrib-s">have added sound to the project</small></p>
       <div class="filters">
         <div class="tagrow" id="tag-filter" role="group" aria-label="Filter by tag"></div>
         <div class="filter-right">
@@ -110,14 +112,15 @@
       <h1>An open archive of the world’s sound</h1>
       <p class="lede">Planet Sound keeps field recordings at the place and the moment they were made. Anyone can add one. Nothing is reconstructed or invented: every entry is a sound someone stood in and chose to keep.</p>
       <h2>How entries are kept</h2>
-      <p>Recordings made here are captured without the phone’s voice processing (no echo cancelling, noise reduction or automatic gain) and stored losslessly as 24-bit WAV, with a broadcast (BWF) header that carries the title, place and date. Each entry carries its own catalogue card: where and when, who recorded it and with what, and the measured facts of the file — sample rate, bit depth, integrated loudness, peak level and the background level of the place.</p>
-      <p>Playback is level-matched, so moving between a quiet forest and a loud market doesn’t throw you. The file itself is never altered.</p>
+      <p>Recordings made here are captured without the phone’s voice processing and stored losslessly as 24-bit WAV, with a broadcast (BWF) header carrying title, place and date. Each entry has its own catalogue card: where and when, who recorded it and with what, and the measured facts of the file — sample rate, bit depth, loudness, peak and the background level of the place.</p>
+      <p>Playback is level-matched, so moving between a quiet forest and a loud market doesn’t throw you. The stored file is never altered.</p>
+      <h2>Listening</h2>
+      <p>Every entry can be looped, played full screen, and controlled from a second player further down the card, so you never have to scroll back up to rewind. <em>Sound shaping</em> lets you reshape what you hear — Tape, a three-band Multiband and a Granulator — and export the result as a WAV or spectrogram where downloads are allowed. It changes your copy only; the original stays as recorded.</p>
       <h2>Taking part</h2>
-      <p>You don’t need an account to listen. To record and publish, sign in with your email and a password. One account holds all your recordings, and you stay signed in on each phone or computer you use. Your email is used only to sign in.</p>
-      <p>You choose, per recording, whether it joins the public map or stays in your private archive, and whether others may download the original recording. You can edit or remove your own recordings at any time.</p>
-      <p>No signal in the field? Record anyway. Recordings wait on your phone until you are back online, then upload by themselves.</p>
+      <p>You don’t need an account to listen. To record and publish, sign in with your email and a password; one account holds all your recordings on every device. Your email is used only to sign in. You choose, per recording, whether it joins the public map or stays private, and whether others may download the original. You can edit or remove your own recordings at any time.</p>
+      <p>No signal in the field? Record anyway. Recordings wait on your phone and upload by themselves when you’re back online.</p>
       <h2>On your phone</h2>
-      <p>Add Planet Sound to your home screen to keep it one tap away. On an iPhone, open the site in Safari, tap the Share button and choose <em>Add to Home Screen</em>. On an Android phone, open it in Chrome, tap the menu (⋮) and choose <em>Add to Home screen</em> or <em>Install app</em>. The icon opens the app full screen.</p>
+      <p>Add Planet Sound to your home screen: on iPhone, open it in Safari, tap Share and choose <em>Add to Home Screen</em>; on Android, open it in Chrome and choose <em>Install app</em>. It then opens full screen.</p>
       <h2>Care</h2>
       <p>Please don’t publish private conversations or anything recorded without consent. Entries are curated: the archive keeps the right to remove anything that doesn’t belong here.</p>
       <p class="credit">Map data © OpenStreetMap contributors, tiles by OpenFreeMap; imagery © Esri and its partners. Milky Way panorama: <a href="https://www.eso.org/public/images/eso0932a/" target="_blank" rel="noopener">ESO/S. Brunier</a>, CC BY 4.0.</p>
@@ -135,11 +138,19 @@
   <div class="card-scroll">
     <header class="card-head">
       <p class="acc" id="c-no"></p>
-      <button type="button" class="x" id="c-close" aria-label="Close"></button>
+      <span class="c-headbtns">
+        <button type="button" class="ic" id="c-full" aria-label="Full screen" aria-pressed="false" title="Full screen"><svg viewBox="0 0 24 24" aria-hidden="true"><path class="i-enter" d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/><path class="i-leave" d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg></button>
+        <button type="button" class="x" id="c-close" aria-label="Close"></button>
+      </span>
     </header>
     <h2 id="c-title"></h2>
-    <p class="c-place" id="c-place"></p>
-    <p class="c-coords" id="c-coords"></p>
+    <div class="c-meta">
+      <div class="c-metatext">
+        <p class="c-place" id="c-place"></p>
+        <p class="c-coords" id="c-coords"></p>
+      </div>
+      <div class="c-thumbwrap" id="c-thumbwrap" hidden><img class="c-photo" id="c-photo" alt="" tabindex="0" role="button" aria-label="Enlarge photo" aria-expanded="false"></div>
+    </div>
 
     <figure class="sono" id="c-sono">
       <div class="sono-img" id="c-spec" role="img" aria-label="Spectrogram"></div>
@@ -158,7 +169,6 @@
     <p class="status" id="c-status" role="status"></p>
 
     <div class="c-notes" id="c-notes"></div>
-    <img class="c-photo" id="c-photo" alt="" hidden>
 
     <dl class="facts" id="c-facts"></dl>
 
@@ -180,6 +190,15 @@
         </div>
       </div>
     </details>
+
+    <div class="loopbar" id="loopbar">
+      <label class="loop" title="Play this recording again and again"><input type="checkbox" id="c-loop"><span class="loop-sw" aria-hidden="true"></span><span>Loop</span></label>
+      <div class="mini" id="mini" role="group" aria-label="Player">
+        <button type="button" class="mplay" id="m-play" aria-label="Play"><svg viewBox="0 0 24 24" aria-hidden="true"><path class="i-play" d="M8 5.5v13l10.5-6.5z"/><g class="i-pause"><rect x="7" y="5.5" width="3.6" height="13"/><rect x="13.4" y="5.5" width="3.6" height="13"/></g></svg></button>
+        <input class="mseek" id="m-seek" type="range" min="0" max="1000" value="0" aria-label="Position">
+        <span class="mtime"><span id="m-el">0:00</span> / <span id="m-du">0:00</span></span>
+      </div>
+    </div>
 
     <div class="c-actions">
       <button type="button" class="btn" id="c-dl" hidden>Export WAV</button>

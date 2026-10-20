@@ -25,7 +25,7 @@ export class Player {
     this.levelMatch = true; this.sound = null; this.ctx = null; this.raf = 0;
     this.hold = [-90, -90]; this.holdT = [0, 0]; this.level = [-90, -90];
     this.fxp = null; this.fxMode = false; this.fxReady = false; this.fxPrep = null; this.fxError = '';
-    this.rawBlob = null; this.srcUrl = '';
+    this.rawBlob = null; this.srcUrl = ''; this.loop = false;
     this.a.addEventListener('timeupdate', () => { if (!this.fxMode) this._time(); });
     this.a.addEventListener('durationchange', () => { if (!this.fxMode) this._time(); });
     this.a.addEventListener('play', () => { if (this.fxMode) return; this.onState('playing'); this._loop(); });
@@ -64,6 +64,9 @@ export class Player {
     if (this.fxp && this.fxp.ready) this.fxp.setLevelDb(this.gainDb());
   }
   setLevelMatch(on) { this.levelMatch = on; this._applyGain(); }
+  /** Loop the recording. Works the same through the plain element and through the effects engine. */
+  setLoop(on) { this.loop = !!on; this.a.loop = this.loop; if (this.fxp) this.fxp.setLoop(this.loop); }
+  isPlaying() { return this.fxMode ? !!(this.fxp && this.fxp.playing) : !this.a.paused; }
   load(sound, url) {
     this.stop();
     this.sound = sound;
@@ -156,8 +159,8 @@ export class Player {
     if (this.fxPrep) return this.fxPrep;
     this.fxError = '';
     if (!(window.AudioContext || window.webkitAudioContext) || !window.AudioWorkletNode) { this.fxError = 'Live preview needs a newer browser. Export still works.'; return (this.fxPrep = Promise.resolve(false)); }
-    const seq = this.seq, fxp = new FxPlayback({ onEnded: () => { if (this.fxMode) this.onState('ended'); }, onBake: s => { if (this.fxp === fxp && this.onFxBake) this.onFxBake(s); } });
-    this.fxp = fxp;
+    const seq = this.seq, fxp = new FxPlayback({ onEnded: () => { if (!this.fxMode) return; if (this.loop && this.fxp) { this.fxp.seek(0); this.fxp.play(); this.onState('playing'); this._loop(); } else this.onState('ended'); }, onBake: s => { if (this.fxp === fxp && this.onFxBake) this.onFxBake(s); } });
+    this.fxp = fxp; fxp.loop = this.loop;
     const opened = fxp.open();                       // the audio context is created here, inside the tap
     this.fxPrep = (async () => {
       await opened;
