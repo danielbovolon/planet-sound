@@ -37,3 +37,8 @@
 .fx-note { margin: 10px 0 0; text-align: center; color: var(--graphite); font-size: 12.5px; line-height: 1.4; }
 .fx-note.err { color: var(--signal); }
 @media (max-width: 860px) { .knob-box { --ks: 64px; width: 84px; } .knob-box.sm { --ks: 52px; width: 66px; } .fx-knobs .knob-box { --ks: 72px; } }
+
+/* the playhead while a take plays back */
+.scope { position: relative; }
+.playhead { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--signal, #D9663A); pointer-events: none; box-shadow: 0 0 6px color-mix(in srgb, var(--signal, #D9663A) 60%, transparent); }
+.playhead[hidden] { display: none; }

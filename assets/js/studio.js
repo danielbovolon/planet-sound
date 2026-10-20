@@ -4,6 +4,7 @@ import { supportsRecording, listInputs, openInput, Recorder, importFile, retagFl
 import { ensureIdentity, upload, call, identity } from './api.js';
 import { outbox, prefs } from './store.js';
 import { drawWave } from './player.js';
+import { Listener } from './listen.js';
 import { createKnob } from './knobs.js';
 
 const MAX_SECONDS = 60 * 60;    // one hour per take
@@ -97,7 +98,7 @@ async function closeStudio() {
   if (state === 'recording') { const ok = await ask({ title: 'Stop and discard this take?', body: 'The recording in progress will not be kept.', yes: 'Discard', no: 'Keep recording', danger: true }); if (!ok) return; }
   else if (take) { const ok = await ask({ title: 'Discard this recording?', body: 'It hasn’t been published or saved yet.', yes: 'Discard', no: 'Keep it', danger: true }); if (!ok) return; }
   await releaseInput();
-  stopListen();
+  stopListen(); listener.dispose();
   take = null; state = 'off';
   cancelAnimationFrame(raf);
   el('studio').hidden = true;
@@ -122,6 +123,7 @@ function resetForm() {
 /* ---------------- input & metering ---------------- */
 async function arm(deviceId) {
   await releaseInput();
+  try { if (navigator.audioSession) navigator.audioSession.type = 'auto'; } catch {}
   setIdleUi();
   if (!supportsRecording()) { msg('This browser can’t record. You can import a file instead.', true); el('s-rec').disabled = true; return; }
   msg('');
@@ -323,6 +325,7 @@ async function adoptTake(r) {
     r.peakDb != null && r.peakDb < -40 ? 'Listen back before you keep it. The level is very low; that may be right for a quiet place.' :
     'Listen back before you keep it.');
   drawReview();
+  listener.prepare(r.master, r.duration).catch(e => console.warn('listen prepare', e));
 }
 function drawReview() {
   if (!take) return;
@@ -340,42 +343,31 @@ function drawReview() {
 async function discardTake(rearm) {
   const ok = !take || await ask({ title: 'Record again?', body: 'This take will be discarded.', yes: 'Discard take', no: 'Keep it', danger: true });
   if (!ok) return;
-  stopListen();
+  stopListen(); listener.dispose();
   take = null; state = 'off';
   if (rearm) arm();
 }
-// Listen back: the big button plays and stops the take. The take is decoded and played
-// through Web Audio. The audio context is created and resumed inside the tap, which iPhone needs.
-let listening = false, listenCtx = null, listenSrc = null;
-async function listenBack() {
+// Listen back: the big button plays and stops the take (listen.js). The take is prepared as soon as it exists,
+// so the tap itself only has to press play, which is what phones require.
+const listener = new Listener({
+  onState: on => setListenUi(on),
+  onTime: t => { if (take) { setClock(t); const h = headEl(); if (h && take.duration) { h.hidden = !t; h.style.left = `${Math.min(100, t / take.duration * 100)}%`; } } },
+  onEnd: () => { if (take) setClock(take.duration); msg('Listen back before you keep it.'); },
+  onError: t => msg(t, true),
+});
+function headEl() {
+  let h = el('s-head');
+  if (!h) { h = document.createElement('i'); h.id = 's-head'; h.className = 'playhead'; h.hidden = true; el('s-spec').parentElement.append(h); }
+  return h;
+}
+function listenBack() {
   if (!take) return;
-  if (listening) { stopListen(); return; }
-  listening = true; setListenUi(true);
-  const AC = window.AudioContext || window.webkitAudioContext;
-  if (!AC) { stopListen(); msg('This browser can’t play the take back. It is stored as recorded and will play on the map.', true); return; }
-  const ctx = listenCtx || (listenCtx = new AC());
-  const ready = ctx.resume();
-  const owner = take;
-  try {
-    await ready;
-    if (!owner.decoded) owner.decoded = await ctx.decodeAudioData(await owner.master.arrayBuffer());
-    if (!listening || take !== owner) return;
-    const src = ctx.createBufferSource();
-    src.buffer = owner.decoded; src.connect(ctx.destination);
-    src.onended = () => { if (listenSrc === src) stopListen(); };
-    listenSrc = src; src.start();
-  } catch (e) {
-    console.warn('listen back', e);
-    stopListen();
-    msg('This browser can’t play the take back. It is stored as recorded and will play on the map.', true);
-  }
+  const r = listener.tap();
+  if (r === 'pending') msg('Getting the take ready…');
+  else if (r === 'playing') msg('Playing. Tap the button to stop.');
+  else if (r === 'stopped') msg('Listen back before you keep it.');
 }
-function stopListen() {
-  listening = false;
-  if (listenSrc) { const s = listenSrc; listenSrc = null; s.onended = null; try { s.stop(); } catch {} }
-  if (listenCtx) { listenCtx.close().catch(() => {}); listenCtx = null; }
-  setListenUi(false);
-}
+function stopListen() { listener.stop(); const h = el('s-head'); if (h) h.hidden = true; if (take) setClock(take.duration); setListenUi(false); }
 function setListenUi(on) {
   const b = el('s-rec');
   b.setAttribute('aria-label', on ? 'Stop' : 'Play');

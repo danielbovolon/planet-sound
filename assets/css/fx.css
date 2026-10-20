@@ -40,9 +40,9 @@
 
 .rack-tabs { display: flex; gap: 6px; margin: 0 0 10px; }
 .rack-tab {
-  flex: 1; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 9px 10px; border-radius: 10px; cursor: pointer;
+  flex: 1; min-width: 0; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 9px 4px; border-radius: 10px; cursor: pointer;
   border: 1px solid var(--glass-line, var(--rule)); background: var(--glass-field, transparent); color: var(--graphite);
-  font: 700 11.5px/1 var(--sans); letter-spacing: .13em; text-transform: uppercase;
+  font: 700 10.5px/1 var(--sans); letter-spacing: .1em; text-transform: uppercase;
 }
 .rack-tab[aria-selected="true"] { color: var(--ink); border-color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); }
 .lamp { width: 9px; height: 9px; border-radius: 50%; background: color-mix(in srgb, var(--graphite) 45%, transparent); box-shadow: inset 0 1px 1px rgba(0,0,0,.35); flex: none; }
@@ -101,3 +101,20 @@
   .curve { width: 100%; height: 130px; }
 }
 @media (max-width: 860px) { .knobs .knob-box { --ks: 58px; } }
+
+/* granulator */
+.gr-view { position: relative; margin: 2px 0 8px; }
+.gr-view canvas { display: block; width: 100%; height: 104px; border-radius: 10px; touch-action: none; cursor: ew-resize; background: color-mix(in srgb, var(--paper) 55%, transparent); }
+.gr-cap { position: absolute; bottom: 4px; font: 600 10px/1 var(--sans); letter-spacing: .08em; text-transform: uppercase; color: var(--graphite); pointer-events: none; }
+.gr-cap.l { left: 8px; } .gr-cap.r { right: 8px; }
+.gr-over { margin: 0 0 8px; }
+.gr-over[hidden] { display: none; }
+.gr-over canvas { display: block; width: 100%; height: 46px; border-radius: 8px; touch-action: none; cursor: grab; border: 1px solid var(--glass-line, var(--rule)); background: color-mix(in srgb, var(--paper) 55%, transparent); }
+.gr-src { margin-bottom: 8px; }
+.gr-src [hidden] { display: none; }
+.grp > h4:has(.gr-scale) { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+.gr-scale { text-transform: none; letter-spacing: 0; font: 500 11.5px/1 var(--sans); color: var(--graphite); display: inline-flex; align-items: center; gap: 6px; }
+.gr-scale select { min-height: 26px; padding: 0 22px 0 8px; font-size: 12px; flex: none; background-position: right 11px top 10px, right 6px top 10px; }
+.gr-foot { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 10px 2px 0; }
+.gr-read { margin-left: auto; font: 600 11.5px/1 var(--sans); color: var(--graphite); font-variant-numeric: tabular-nums; }
+#rk-gr.off .knobs { opacity: .5; }

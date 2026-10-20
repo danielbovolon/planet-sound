@@ -72,6 +72,19 @@ export const MB_PRESETS = [
   }],
 ];
 
+export const GRAIN_PRESETS = [
+  ['Texture cloud', { mode: 'cloud', rate: 30, size: 180, spray: 0.6, pan: 0.7, mix: 0.65 }],
+  ['Shimmer (+12 st)', { mode: 'cloud', rate: 40, size: 140, pitch: 12, spray: 0.5, pan: 0.6, mix: 0.4, lp: 12000 }],
+  ['Frozen pad (hold the buffer)', { mode: 'cloud', rate: 14, size: 650, spray: 0.35, pan: 0.85, mix: 0.85, freeze: true, lp: 9000, free: true }],
+  ['Octave swarm', { mode: 'cloud', rate: 60, size: 90, pSpray: 12, scale: 'octaves', spray: 0.8, pan: 0.7, mix: 0.5 }],
+  ['Pentatonic rain', { mode: 'cloud', rate: 25, size: 260, pSpray: 12, scale: 'pentatonic', spray: 0.5, pan: 0.8, mix: 0.6 }],
+  ['Time-stretch (slow scan)', { src: 'region', rate: 25, size: 200, spray: 0.04, scan: 0.1, pan: 0.2, mix: 1 }],
+  ['Glitch stutter', { rate: 12, size: 60, jitter: 0.4, spray: 0.05, rev: 0.3, smooth: 0.25, pan: 0.5, mix: 0.6 }],
+  ['Reverse wash', { rev: 1, rate: 18, size: 420, spray: 0.3, pan: 0.5, mix: 0.6, lp: 7000 }],
+  ['Rumble (−12 st)', { rate: 12, size: 350, pitch: -12, spray: 0.2, pan: 0.3, mix: 0.7, lp: 4000 }],
+  ['Dust (sparse grains)', { mode: 'cloud', rate: 3, size: 90, pSpray: 7, spray: 1, pan: 1, mix: 0.7 }],
+];
+
 /* ------------------------------------------------------------------ state */
 /** The settings every part of the app shares. The Multiband starts on the classic OTT curve, switched off. */
 export const fxState = {
@@ -105,6 +118,10 @@ export function applyTapePreset(draft, preset) {
   draft.tape = { ...globalThis.PsFx.defaults().tape, ...rest, on: true };
   draft.speed = __speed || 1;
 }
+export function applyGrainPreset(draft, preset) {
+  const d = globalThis.PsFx.grainDefaults(), keep = { src: draft.grain.src, bufSec: draft.grain.bufSec, rStart: draft.grain.rStart, rLen: draft.grain.rLen, free: false, freeze: false, seed: draft.grain.seed };
+  draft.grain = { ...d, ...keep, ...preset, on: true };
+}
 export function applyMbPreset(draft, preset) {
   const d = globalThis.PsFx.defaults().mb;
   draft.mb = { ...d, ...preset, on: true, knee: draft.mb.knee, rms: draft.mb.rms };
@@ -118,6 +135,7 @@ export class FxPlayback {
     this.cb = cb || {}; this.ctx = null; this.node = null; this.buffer = null; this.src = null;
     this.playing = false; this.offset = 0; this.t0 = 0; this.rate = 1; this.levelDb = 0; this.params = null; this.meters = null;
     this.an = null; this.ready = false; this.opening = null;
+    this.regionSig = ''; this.bakeTimer = 0; this.bakeSeq = 0; this.region = null; this.baking = false;
   }
   /** Create the audio context. Call it inside a tap or click: iPhone only starts audio from one. */
   open() {
@@ -155,6 +173,8 @@ export class FxPlayback {
       processorOptions: { channels: n, params: this.params },
     });
     this.node.port.onmessage = e => { if (e.data && e.data.meters) this.meters = e.data.meters; };
+    this.regionSig = ''; this.region = null; this._transport();
+    if (this.params) this._wantRegion(this.params);
     this.node.connect(this.gain);
     try { this.split.disconnect(); } catch {}
     this.gain.connect(this.split);
@@ -167,22 +187,51 @@ export class FxPlayback {
     this._kill();
     const s = this.ctx.createBufferSource();
     s.buffer = this.buffer; s.playbackRate.value = this.rate; s.connect(this.node);
-    s.onended = () => { if (this.src === s) { this.src = null; this.playing = false; this.offset = this.buffer.duration; if (this.cb.onEnded) this.cb.onEnded(); } };
+    s.onended = () => { if (this.src === s) { this.src = null; this.playing = false; this.offset = this.buffer.duration; this._transport(); if (this.cb.onEnded) this.cb.onEnded(); } };
     s.start(0, Math.max(0, Math.min(off, this.buffer.duration - 0.001)));
-    this.src = s; this.t0 = this.ctx.currentTime; this.offset = off; this.playing = true;
+    this.src = s; this.t0 = this.ctx.currentTime; this.offset = off; this.playing = true; this._transport();
   }
+  _transport() { if (this.node) this.node.port.postMessage({ transport: { playing: this.playing } }); }
   play() {
     if (!this.buffer) return;
     if (this.ctx.state !== 'running') this.ctx.resume().catch(() => {});
     if (this.offset >= this.buffer.duration - 0.02) this.offset = 0;
     this._start(this.offset);
   }
-  pause() { if (!this.buffer) return; this.offset = this.position(); this._kill(); this.playing = false; }
+  pause() { if (!this.buffer) return; this.offset = this.position(); this._kill(); this.playing = false; this._transport(); }
   seek(sec) { if (!this.buffer) return; sec = Math.max(0, Math.min(this.buffer.duration - 0.01, sec)); if (this.playing) this._start(sec); else this.offset = sec; }
   setParams(p) {
     this.params = p;
     if (this.node) this.node.port.postMessage({ params: p });
     this.setSpeed(p.speed);
+    this._wantRegion(p);
+  }
+  /** The granulator's Region source is a stretch of the recording rendered through speed, Tape and Multiband.
+   *  It is rendered again (after a short pause) whenever any of those settings, or the stretch, change. */
+  _wantRegion(p) {
+    const g = p.grain;
+    if (!g || !g.on || g.src !== 'region' || !this.buffer || !this.node) return;
+    const sig = JSON.stringify([p.speed, p.tape, p.mb, p.safe, g.rStart, g.rLen]);
+    if (sig === this.regionSig) return;
+    this.regionSig = sig; clearTimeout(this.bakeTimer);
+    const seq = ++this.bakeSeq;
+    if (this.cb.onBake) this.cb.onBake({ state: 'waiting' });
+    this.bakeTimer = setTimeout(() => this._bake(p, sig, seq), this.region ? 450 : 30);
+  }
+  async _bake(p, sig, seq) {
+    if (!this.buffer || !this.node) return;
+    this.baking = true;
+    try {
+      const dsp = await loadDsp(), b = this.buffer, chs = [];
+      for (let c = 0; c < Math.min(2, b.numberOfChannels); c++) chs.push(b.getChannelData(c));
+      const out = await dsp.bakeRegion(chs, b.sampleRate, p, f => { if (seq === this.bakeSeq && this.cb.onBake) this.cb.onBake({ state: 'baking', fraction: f }); });
+      if (seq !== this.bakeSeq || !this.node) return;
+      if (!out) { this.node.port.postMessage({ clearRegion: true }); this.region = null; if (this.cb.onBake) this.cb.onBake({ state: 'empty' }); return; }
+      this.region = out;
+      this.node.port.postMessage({ region: { chs: out } });       // (structured clone: the page keeps its copy for the display)
+      if (this.cb.onBake) this.cb.onBake({ state: 'ready', chs: out });
+    } catch (e) { console.warn('granulator region', e); if (this.cb.onBake) this.cb.onBake({ state: 'error' }); this.regionSig = ''; }
+    finally { if (seq === this.bakeSeq) this.baking = false; }
   }
   setSpeed(r) {
     if (r === this.rate) return;
@@ -194,6 +243,7 @@ export class FxPlayback {
     if (this.gain) this.gain.gain.setTargetAtTime(Math.pow(10, db / 20), this.ctx.currentTime, 0.05);
   }
   destroy() {
+    clearTimeout(this.bakeTimer); this.bakeSeq++;
     this._kill(); this.playing = false;
     try { this.node && this.node.disconnect(); } catch {}
     try { this.ctx && this.ctx.close(); } catch {}

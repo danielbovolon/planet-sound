@@ -156,7 +156,7 @@ export class Player {
     if (this.fxPrep) return this.fxPrep;
     this.fxError = '';
     if (!(window.AudioContext || window.webkitAudioContext) || !window.AudioWorkletNode) { this.fxError = 'Live preview needs a newer browser. Export still works.'; return (this.fxPrep = Promise.resolve(false)); }
-    const seq = this.seq, fxp = new FxPlayback({ onEnded: () => { if (this.fxMode) this.onState('ended'); } });
+    const seq = this.seq, fxp = new FxPlayback({ onEnded: () => { if (this.fxMode) this.onState('ended'); }, onBake: s => { if (this.fxp === fxp && this.onFxBake) this.onFxBake(s); } });
     this.fxp = fxp;
     const opened = fxp.open();                       // the audio context is created here, inside the tap
     this.fxPrep = (async () => {

@@ -6,7 +6,7 @@
  *   - in Node                             the tests
  * It is a classic script (no import/export) so every browser accepts it in a worklet.
  *
- * Signal flow:   source → [varispeed] → TAPE → MULTIBAND → safe ceiling → out
+ * Signal flow:   source → [varispeed] → TAPE → MULTIBAND → GRANULATOR (dry/wet) → safe ceiling → out
  *
  * TAPE   pitch (phase vocoder, time stays) · wow & flutter · tube (even harmonics) · saturate
  *        (pre/de-emphasised, so the highs go first, like tape) · overdrive · tape compression ·
@@ -38,14 +38,19 @@ const RANGES = {
   tape: { pitch: [-12, 12], wow: [0, 1], sat: [0, 1], tube: [0, 1], drive: [0, 1], comp: [0, 1], warmth: [0, 1],
           hp: [20, 1000], lp: [1000, 22000], hiss: [0, 1], slap: [0, 1], slapMs: [30, 400], vol: [-18, 18] },
   mb: { amount: [0, 2], time: [0.1, 4], out: [-24, 24], range: [0, 36], lo: [20, 1000], hi: [400, 18000] },
+  grain: { mix: [0, 1], level: [-24, 12], bufSec: [1, 30], rate: [0.5, 200], size: [5, 2000], rndSize: [0, 1], jitter: [0, 1], pos: [0, 1], spray: [0, 1], scan: [-4, 4], pitch: [-36, 36], pSpray: [0, 24], rev: [0, 1], pan: [0, 1], amp: [0, 1], voices: [1, 64], tilt: [-1, 1], smooth: [0, 1], hp: [20, 2000], lp: [200, 22000], rStart: [0, 86400], rLen: [0.5, 60], seed: [0, 99999] },
   band: { inDb: [-24, 24], outDb: [-24, 24], aThr: [-60, 0], aRat: [1, 20], bThr: [-90, -5], bRat: [0.25, 4], atk: [0.05, 300], rel: [5, 3000] },
 };
 function bandDefaults() { return { on: true, solo: false, inDb: 0, outDb: 0, aThr: 0, aRat: 1, bThr: -90, bRat: 1, atk: 20, rel: 200 }; }
+function grainDefaults() {
+  return { on: false, mix: 0.5, level: 0, src: 'live', bufSec: 10, freeze: false, free: false, mode: 'sync', rate: 20, size: 120, rndSize: 0, jitter: 0, pos: 0.5, spray: 0.2, scan: 0, pitch: 0, pSpray: 0, scale: 'free', rev: 0, pan: 0.4, amp: 0, voices: 32, tilt: 0, smooth: 1, hp: 20, lp: 22000, rStart: 0, rLen: 8, seed: 1 };
+}
 function defaults() {
   return {
     speed: 1,
     tape: { on: false, type: '15', pitch: 0, wow: 0, sat: 0, tube: 0, drive: 0, comp: 0, warmth: 0, hp: 20, lp: 22000, hiss: 0, slap: 0, slapMs: 120, vol: 0 },
     mb: { on: false, amount: 1, time: 1, out: 0, range: 24, knee: true, rms: true, lo: 100, hi: 2500, bands: [bandDefaults(), bandDefaults(), bandDefaults()] },
+    grain: grainDefaults(),
     safe: true,
   };
 }
@@ -72,13 +77,18 @@ function normalize(p) {
   o.mb.bands.forEach(b => { b.bThr = Math.min(b.bThr, b.aThr); });
   if (o.mb.hi < o.mb.lo * 1.5) o.mb.hi = Math.min(RANGES.mb.hi[1], o.mb.lo * 1.5);
   if (o.mb.hi < o.mb.lo * 1.5) o.mb.lo = o.mb.hi / 1.5;
+  o.grain = pick(p && p.grain, d.grain, RANGES.grain);
+  o.grain.voices = Math.round(o.grain.voices); o.grain.seed = Math.round(o.grain.seed);
+  if (o.grain.src !== 'region') o.grain.src = 'live';
+  if (o.grain.mode !== 'cloud') o.grain.mode = 'sync';
+  if (!(o.grain.scale in SCALES)) o.grain.scale = 'free';
   return o;
 }
 /** True when the processing would change nothing: the file can be passed through untouched. */
 function isNeutral(p) {
   const q = normalize(p);
   if (q.speed !== 1) return false;
-  if (q.tape.on || q.mb.on) return false;
+  if (q.tape.on || q.mb.on || q.grain.on) return false;
   return true;
 }
 
@@ -560,6 +570,182 @@ class MultibandCore {
 const CEIL = 0.8913, KNEE = 0.75;                 // soft ceiling at −1 dBFS; it starts to bend at about −2.5 dBFS
 function softCeil(x) { const a = x < 0 ? -x : x; if (a <= KNEE) return x; const y = KNEE + (CEIL - KNEE) * Math.tanh((a - KNEE) / (CEIL - KNEE)); return x < 0 ? -y : y; }
 
+/* ------------------------------------------------------------------ GRANULATOR
+ * A granular synthesizer that plays grains of the sound it is fed (after Tape and Multiband), so you hear
+ * the processed sound granulated, with a dry/wet mix against the processed sound itself.
+ *
+ *   SOURCE   Live: the last few seconds of the processed sound, kept in a ring buffer that fills while the sound
+ *            plays (Freeze holds it). Region: a stretch of the recording, rendered through Tape + Multiband first.
+ *   GRAINS   Classic = regular, Cloud = random in time. Rate (grains per second) and Size set the overlap.
+ *            Each grain has a window (Shape: how soft the edges are; Tilt: where the peak sits), a position in the
+ *            buffer (Position + Spray, moving with Scan), a pitch (Pitch + random Pitch spray, optionally quantised to
+ *            a scale), a direction (Reverse), a place in the stereo field (Pan spread) and a level (Level spread).
+ *   OUT      a tone filter (high-pass / low-pass) on the grains, a Level, and Dry/Wet (equal power).
+ * Everything random comes from a seeded generator, so the same settings give the same result in any block size. */
+const MAXV = 64;
+const SCALES = {
+  free: null, chromatic: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], major: [0, 2, 4, 5, 7, 9, 11], minor: [0, 2, 3, 5, 7, 8, 10],
+  pentatonic: [0, 2, 4, 7, 9], minorpent: [0, 3, 5, 7, 10], whole: [0, 2, 4, 6, 8, 10], fifths: [0, 7], octaves: [0],
+};
+function quantScale(x, sc) {
+  const o = Math.floor(x / 12), r = x - o * 12; let best = 0, bd = 1e9;
+  for (let i = 0; i <= sc.length; i++) { const d = i === sc.length ? 12 : sc[i], e = Math.abs(r - d); if (e < bd) { bd = e; best = d; } }
+  return o * 12 + best;
+}
+function mulberry(seed) {
+  let a = seed | 0;
+  return function () { a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+}
+class GranulatorCore {
+  constructor(fs, n) {
+    this.fs = fs; this.n = n; this.nc = Math.min(2, n);
+    this.cap = 0; this.ring = []; this.W = 0; this.F = 0;
+    this.region = null; this.rF = 0; this.regionRate = fs;
+    this.hold = false; this.run = true;
+    this.vPos = new Float64Array(MAXV); this.vInc = new Float64Array(MAXV); this.vK = new Int32Array(MAXV); this.vLen = new Int32Array(MAXV);
+    this.vGl = new Float32Array(MAXV); this.vGr = new Float32Array(MAXV); this.vUse = new Uint8Array(MAXV); this.act = new Int32Array(MAXV); this.nAct = 0;
+    this.lut = new Float32Array(1026); this.lutKey = ''; this.mW = 0.5; this.mW2 = 0.375;
+    this.seed = -1; this.rng = mulberry(1); this.cd = 0; this.scanP = 0; this.mixS = 0;
+    this.hpF = new Biquad(2); this.lpF = new Biquad(2); this.fKey = ''; this.hpOn = false; this.lpOn = false;
+    this.spawned = 0; this.dropped = 0; this.maxAct = 0; this.dbg = null; this.useRegion = false; this.lastU = 0;
+    this.tailing = false;
+  }
+  _alloc(cap) { this.cap = cap; this.ring = []; for (let c = 0; c < this.nc; c++) this.ring.push(new Float32Array(cap)); this.W = 0; this.F = 0; this.killAll(); }
+  killAll() { this.nAct = 0; this.vUse.fill(0); }
+  /** A rendered stretch of the recording (one Float32Array per channel, at this sample rate). */
+  setRegion(chs) {
+    if (!chs || !chs.length || !chs[0].length) { this.clearRegion(); return; }
+    const out = []; for (let c = 0; c < this.nc; c++) out.push(chs[Math.min(c, chs.length - 1)]);
+    this.region = out; this.rF = out[0].length; this.killAll();
+  }
+  clearRegion() { this.region = null; this.rF = 0; this.killAll(); }
+  _win(p) {
+    const key = p.tilt + '|' + p.smooth; if (key === this.lutKey) return; this.lutKey = key;
+    const x0 = 0.5 + p.tilt * 0.45, Li = Math.max(1e-4, x0 * p.smooth), Lo = Math.max(1e-4, (1 - x0) * p.smooth), L = this.lut;
+    let s1 = 0, s2 = 0;
+    for (let i = 0; i <= 1024; i++) {
+      const x = i / 1024; let w = 1;
+      if (x < Li) { const s = Math.sin(0.5 * PI * x / Li); w = s * s; } else if (x > 1 - Lo) { const s = Math.sin(0.5 * PI * (1 - x) / Lo); w = s * s; }
+      L[i] = w; if (i < 1024) { s1 += w; s2 += w * w; }
+    }
+    L[1025] = L[1024]; this.mW = s1 / 1024; this.mW2 = s2 / 1024;
+  }
+  _filters(p) {
+    const key = p.hp + '|' + p.lp; if (key === this.fKey) return; this.fKey = key;
+    this.hpOn = p.hp > 20.5; this.lpOn = p.lp < 21900;
+    if (this.hpOn) this.hpF.hp(p.hp, this.fs, 0.7071); else this.hpF.ident();
+    if (this.lpOn) this.lpF.lp(Math.min(p.lp, this.fs * 0.45), this.fs, 0.7071); else this.lpF.ident();
+  }
+  /** x, y: arrays of Float32Array per channel. p: the normalised `grain` parameters. */
+  process(inA, outA, frames, p) {
+    const n = this.n, nc = this.nc, fs = this.fs;
+    const wantCap = Math.max(1024, Math.round(p.bufSec * fs));
+    if (wantCap !== this.cap) this._alloc(wantCap);
+    if (p.seed !== this.seed) { this.seed = p.seed; this.rng = mulberry(p.seed + 1); }
+    const cap = this.cap, writing = !p.freeze && !this.hold;
+    if (!p.on) {
+      if (writing) {
+        for (let c = 0; c < nc; c++) { const r = this.ring[c], s = inA[c]; let w = this.W % cap; for (let i = 0; i < frames; i++) { r[w] = s[i]; if (++w === cap) w = 0; } }
+        this.W += frames; this.F = Math.min(cap, this.F + frames);
+      }
+      for (let c = 0; c < n; c++) outA[c].set(inA[c].subarray(0, frames));
+      this.killAll(); this.mixS = 0; this.tailing = false; return;
+    }
+    const useRegion = p.src === 'region' && !!this.region;
+    if (useRegion !== this.useRegion) { this.useRegion = useRegion; this.killAll(); }
+    const rb = useRegion ? this.region : this.ring, rCap = useRegion ? this.rF : cap;
+    let cW = useRegion ? this.rF : this.W, cF = useRegion ? this.rF : this.F;
+    const live = !useRegion && writing, margin = live ? 64 : 0;       // reading is kept clear of the end that is being overwritten
+    let wi = this.W % cap, ring0 = this.ring[0], ring1 = nc > 1 ? this.ring[1] : null;
+    const in0 = inA[0], in1 = nc > 1 ? inA[1] : null;
+    let lo = 0, hi = 0, span = 0;
+    this._win(p); this._filters(p);
+    const lut = this.lut, mode = p.mode, quant = SCALES[p.scale] || null;
+    const overlap = Math.min(p.voices, Math.max(0.02, p.rate * p.size / 1000));
+    const wetGain = Math.pow(Math.max(1, overlap * this.mW2), -0.45) * Math.pow(10, p.level / 20);   // power-matched for noise-like sound (field recordings)
+    const mixT = p.mix, voices = p.voices, rng = this.rng;
+    const vUse = this.vUse, vPos = this.vPos, vInc = this.vInc, vK = this.vK, vLen = this.vLen, vGl = this.vGl, vGr = this.vGr, act = this.act;
+    const b0 = rb[0], b1 = nc > 1 ? rb[1] : rb[0], stereo = nc > 1;
+    const base = fs / p.rate, fade = 24, runOn = this.run;
+    let nAct = this.nAct, cd = this.cd, scanP = this.scanP, mixS = this.mixS;
+    if (!runOn) cd = Math.min(cd, 0);
+    for (let i = 0; i < frames; i++) {
+      if (live) {                                           // the live buffer is written sample by sample, so the result does not depend on the block size
+        ring0[wi] = in0[i]; if (ring1) ring1[wi] = in1[i];
+        if (++wi === cap) wi = 0; cW++; if (cF < cap) cF++;
+      }
+      hi = cW - 4; lo = cW - cF + 2 + margin; span = hi - lo;
+      if (span > 64) { scanP += p.scan / span; if (scanP >= 1) scanP -= 1; else if (scanP < 0) scanP += 1; }
+      if (runOn && span > 64) {
+        cd -= 1;
+        while (cd <= 0) {
+          cd += mode === 'cloud' ? Math.max(1, base * Math.max(0.08, -Math.log(1 - rng() * 0.9999))) : Math.max(1, base * (p.jitter > 0 ? 1 + p.jitter * 0.9 * (rng() * 2 - 1) : 1));
+          if (nAct >= voices) { this.dropped++; continue; }
+          // ---- a new grain
+          let len = Math.round(p.size * (p.rndSize > 0 ? Math.pow(2, p.rndSize * (rng() * 2 - 1)) : 1) * fs / 1000); if (len < 32) len = 32;
+          let semis = p.pitch;
+          if (p.pSpray > 0) { let r = p.pSpray * (rng() * 2 - 1); if (quant) r = quantScale(r, quant); semis += r; }
+          let inc = Math.pow(2, semis / 12);
+          const back = p.rev > 0 && rng() < p.rev;
+          let u = p.pos + scanP; u -= Math.floor(u);
+          if (p.spray > 0) u += p.spray * 0.5 * (rng() * 2 - 1);
+          u = u < 0 ? 0 : u > 1 ? 1 : u;
+          let start = lo + u * span; const need = len * inc + 4;
+          if (!back) { if (start + need > hi) start = Math.max(lo, hi - need); } else { if (start - need < lo) start = Math.min(hi, lo + need); }
+          let pan = p.pan > 0 ? p.pan * (rng() * 2 - 1) : 0;
+          const amp = p.amp > 0 ? 1 - p.amp * rng() : 1;
+          let v = -1; for (let k = 0; k < MAXV; k++) { if (!vUse[k]) { v = k; break; } }
+          if (v < 0) { this.dropped++; continue; }
+          vPos[v] = start; vInc[v] = back ? -inc : inc; vK[v] = 0; vLen[v] = len;
+          if (stereo) { const a = (pan + 1) * PI / 4; vGl[v] = Math.SQRT2 * Math.cos(a) * amp; vGr[v] = Math.SQRT2 * Math.sin(a) * amp; } else { vGl[v] = amp; vGr[v] = amp; }
+          vUse[v] = 1; act[nAct++] = v; this.spawned++; this.lastU = u;
+          if (this.dbg) this.dbg.push({ semis, back, u, len, pan, amp, t: this.spawned });
+        }
+      }
+      let wl = 0, wr = 0;
+      for (let a = 0; a < nAct; a++) {
+        const v = act[a], pos = vPos[v], inc = vInc[v], k = vK[v], len = vLen[v];
+        const d = inc > 0 ? hi - pos : pos - lo;
+        if (d <= 0 || k >= len) { vUse[v] = 0; act[a] = act[--nAct]; a--; continue; }
+        const ph = k / len * 1024, pi = ph | 0, pf = ph - pi;
+        let w = lut[pi] + (lut[pi + 1] - lut[pi]) * pf;
+        if (k < fade) w *= k / fade; else if (len - k < fade) w *= (len - k) / fade;
+        if (d < 64) w *= d / 64;
+        const i1 = Math.floor(pos), f = pos - i1, bb = i1 % rCap, ia = bb === 0 ? rCap - 1 : bb - 1, ic = bb + 1 === rCap ? 0 : bb + 1, id = ic + 1 === rCap ? 0 : ic + 1;
+        const f2 = f * f;
+        let y0 = b0[ia], y1 = b0[bb], y2 = b0[ic], y3 = b0[id];
+        const xl = ((0.5 * (y3 - y0) + 1.5 * (y1 - y2)) * f + (y0 - 2.5 * y1 + 2 * y2 - 0.5 * y3)) * f2 + 0.5 * (y2 - y0) * f + y1;
+        let xr = xl;
+        if (stereo) { y0 = b1[ia]; y1 = b1[bb]; y2 = b1[ic]; y3 = b1[id]; xr = ((0.5 * (y3 - y0) + 1.5 * (y1 - y2)) * f + (y0 - 2.5 * y1 + 2 * y2 - 0.5 * y3)) * f2 + 0.5 * (y2 - y0) * f + y1; }
+        wl += xl * w * vGl[v]; wr += xr * w * vGr[v];
+        vPos[v] = pos + inc; vK[v] = k + 1;
+      }
+      wl *= wetGain; wr *= wetGain;
+      if (this.hpOn) { wl = this.hpF.run(wl, 0); if (stereo) wr = this.hpF.run(wr, 1); }
+      if (this.lpOn) { wl = this.lpF.run(wl, 0); if (stereo) wr = this.lpF.run(wr, 1); }
+      mixS += (mixT - mixS) * 0.003;
+      const dg = Math.cos(mixS * PI / 2), wg = Math.sin(mixS * PI / 2);
+      outA[0][i] = inA[0][i] * dg + wl * wg;
+      if (nc > 1) outA[1][i] = inA[1][i] * dg + wr * wg;
+    }
+    for (let c = nc; c < n; c++) outA[c].set(inA[c].subarray(0, frames));
+    if (nAct > this.maxAct) this.maxAct = nAct;
+    if (live) { this.W = cW; this.F = cF; }
+    this.nAct = nAct; this.cd = cd; this.scanP = scanP; this.mixS = mixS; this.tailing = nAct > 0;
+    this.info = { span, lo, F: cF, W: cW, region: useRegion };
+  }
+  /** For the display: where the sounding grains read from (0 = oldest, 1 = newest) and how loud they are right now. */
+  grains(max) {
+    const out = [], inf = this.info; if (!inf || inf.span <= 0) return out;
+    for (let a = 0; a < this.nAct && out.length < max; a++) {
+      const v = this.act[a], x = (this.vPos[v] - inf.lo) / inf.span;
+      out.push([x < 0 ? 0 : x > 1 ? 1 : x, Math.sin(PI * this.vK[v] / this.vLen[v])]);
+    }
+    return out;
+  }
+  get fill() { return this.useRegion ? 1 : this.F / (this.cap || 1); }
+}
+
 /* ------------------------------------------------------------------ the chain */
 class FxChain {
   /** @param {number} fs @param {number} n channels @param {{lowLatency?:boolean}} [o] */
@@ -567,6 +753,7 @@ class FxChain {
     this.fs = fs; this.n = n; this.o = o || {};
     this.tape = new TapeCore(fs, n, this.o.lowLatency);
     this.mb = new MultibandCore(fs, n);
+    this.grain = new GranulatorCore(fs, n);
     this.tmp = []; this.tmp2 = []; this.size = 0;
     this.safeS = 0;
   }
@@ -579,13 +766,17 @@ class FxChain {
     const t = this.tmp.map(a => a.subarray(0, frames)), t2 = this.tmp2.map(a => a.subarray(0, frames));
     this.tape.process(x, t, frames, p.tape);
     this.mb.process(t, t2, frames, p.mb, p.safe && (p.mb.on || this.mb.mix > 0));
-    const ceil = p.safe && (p.tape.on || this.tape.m > 0);
+    this.grain.process(t2, t, frames, p.grain);          // (always runs: its live buffer fills even while it is off)
+    const gOn = p.grain.on;
+    const ceil = p.safe && (p.tape.on || this.tape.m > 0 || gOn);
     for (let c = 0; c < this.n; c++) {
-      const a = t2[c], o = y[c];
-      if (ceil && !p.mb.on && this.mb.mix === 0) for (let i = 0; i < frames; i++) o[i] = softCeil(a[i]); else o.set(a);
+      const a = t[c], o = y[c];
+      if (ceil && (gOn || (!p.mb.on && this.mb.mix === 0))) for (let i = 0; i < frames; i++) o[i] = softCeil(a[i]); else o.set(a);
     }
   }
   meters() { return { lvl: this.mb.lvl.slice(), gr: this.mb.gr.slice(), tapeGr: this.tape.lastGr || 0 }; }
+  /** What the granulator is doing now, for its display. */
+  grainInfo() { const g = this.grain; return { n: g.nAct, fill: g.fill, scan: g.scanP, grains: g.grains(40), region: g.useRegion }; }
 }
 
 /* ------------------------------------------------------------------ offline helpers */
@@ -614,12 +805,15 @@ function resample(chs, speed) {
 /** Render a whole recording: speed, then Tape and Multiband. Returns the new channels (latency removed, echo tail kept). */
 async function render(chs, fs, params, onProgress) {
   const p = normalize(params), n = chs.length;
+  let region = null;
+  if (p.grain.on && p.grain.src === 'region') region = await bakeRegion(chs, fs, p);
   let x = p.speed !== 1 ? resample(chs, p.speed) : chs;
-  if (!p.tape.on && !p.mb.on) return x;
+  if (!p.tape.on && !p.mb.on && !p.grain.on) return x;
   const len = x[0].length;
   const chain = new FxChain(fs, n, { lowLatency: true });
+  if (region) chain.grain.setRegion(region);
   const lat = p.tape.on ? chain.latency : 0;
-  const tail = (p.tape.on && p.tape.slap > 0.01 ? Math.ceil(fs * (p.tape.slapMs * 0.001 * 7 + 0.3)) : 0) + (p.tape.on ? 0 : 0);
+  const tail = (p.tape.on && p.tape.slap > 0.01 ? Math.ceil(fs * (p.tape.slapMs * 0.001 * 7 + 0.3)) : 0) + (p.grain.on ? Math.ceil(fs * (p.grain.size * 0.001 * 2 + 0.25)) : 0);
   const total = len + lat + tail, BLK = 4096;
   const out = x.map(() => new Float32Array(len + tail));
   const inB = x.map(() => new Float32Array(BLK)), outB = x.map(() => new Float32Array(BLK));
@@ -636,6 +830,14 @@ async function render(chs, fs, params, onProgress) {
   }
   if (onProgress) onProgress(1);
   return out;
+}
+/** The stretch of the recording the granulator reads from (Region source), run through speed, Tape and Multiband. */
+async function bakeRegion(chs, fs, params, onProgress) {
+  const p = normalize(params), n = chs[0].length;
+  const a = Math.min(n - 1, Math.round(p.grain.rStart * fs)), b = Math.min(n, a + Math.round(p.grain.rLen * fs));
+  if (b - a < 64) return null;
+  const q = JSON.parse(JSON.stringify(p)); q.grain.on = false;
+  return render(chs.map(c => c.subarray(a, b)), fs, q, onProgress);
 }
 /** A one-line description of the processing, for the file's metadata and the review text. */
 function describe(params) {
@@ -655,10 +857,23 @@ function describe(params) {
     parts.push(`multiband (${m.lo >= 1000 ? (m.lo / 1000).toFixed(2) + ' kHz' : Math.round(m.lo) + ' Hz'} / ${m.hi >= 1000 ? (m.hi / 1000).toFixed(2) + ' kHz' : Math.round(m.hi) + ' Hz'}, amount ${Math.round(m.amount * 100)}%` +
       m.bands.map((b, i) => `; ${names[i]} ${b.aRat > 1.001 ? `above ${b.aThr.toFixed(0)} dB 1:${b.aRat.toFixed(2)}` : ''}${b.bRat !== 1 ? ` below ${b.bThr.toFixed(0)} dB 1:${b.bRat.toFixed(2)}` : ''}`.replace(/ $/, '')).join('') + ')');
   }
+  if (p.grain.on) {
+    const g = p.grain, bits = [];
+    bits.push(g.src === 'region' ? `region ${g.rStart.toFixed(1)}–${(g.rStart + g.rLen).toFixed(1)} s` : `live buffer ${g.bufSec.toFixed(0)} s${g.freeze ? ' frozen' : ''}`);
+    bits.push(`${g.mode === 'cloud' ? 'cloud ' : ''}${g.rate.toFixed(g.rate < 10 ? 1 : 0)} grains/s`, `size ${g.size < 100 ? g.size.toFixed(0) : Math.round(g.size)} ms`);
+    bits.push(`position ${Math.round(g.pos * 100)}%`);
+    if (g.spray > 0.004) bits.push(`spray ${Math.round(g.spray * 100)}%`);
+    if (Math.abs(g.scan) > 0.004) bits.push(`scan ${g.scan.toFixed(2)}x`);
+    if (Math.abs(g.pitch) >= 0.005) bits.push(`pitch ${g.pitch > 0 ? '+' : ''}${g.pitch.toFixed(1)} st`);
+    if (g.pSpray >= 0.05) bits.push(`pitch spray ${g.pSpray.toFixed(1)} st${g.scale !== 'free' ? ' (' + g.scale + ')' : ''}`);
+    if (g.rev > 0.004) bits.push(`reverse ${Math.round(g.rev * 100)}%`);
+    bits.push(`wet ${Math.round(g.mix * 100)}%`);
+    parts.push(`granulator (${bits.join(', ')})`);
+  }
   return parts.join('; ');
 }
 
-const api = { defaults, normalize, isNeutral, RANGES, TYPES, FxChain, TapeCore, MultibandCore, PitchShifter, Oversampler, Biquad, resample, render, describe, softCeil, PV_LAT, HB_M, makeFFT, bandDefaults };
+const api = { defaults, normalize, isNeutral, RANGES, TYPES, SCALES, FxChain, TapeCore, MultibandCore, GranulatorCore, PitchShifter, Oversampler, Biquad, resample, render, bakeRegion, describe, softCeil, quantScale, PV_LAT, HB_M, makeFFT, bandDefaults, grainDefaults };
 root.PsFx = api;
 if (typeof module !== 'undefined') module.exports = api;
 
@@ -670,10 +885,13 @@ if (typeof registerProcessor === 'function') {
       const o = (options && options.processorOptions) || {};
       this.n = Math.max(1, Math.min(8, (o.channels | 0) || 2));
       this.chain = new FxChain(sampleRate, this.n);
-      this.p = normalize(o.params); this.tick = 0; this.run = true;
+      this.p = normalize(o.params); this.tick = 0; this.run = true; this.playing = false;
       this.port.onmessage = e => {
         const d = e.data || {};
         if (d.params) this.p = normalize(d.params);
+        if (d.region) this.chain.grain.setRegion(d.region.chs);
+        if (d.clearRegion) this.chain.grain.clearRegion();
+        if (d.transport) { this.playing = !!d.transport.playing; }
       };
     }
     process(inputs, outputs) {
@@ -681,8 +899,11 @@ if (typeof registerProcessor === 'function') {
       if (!out || !out.length) return true;
       const frames = out[0].length, n = this.n, x = [], y = [];
       for (let c = 0; c < n; c++) { x.push((inp && (inp[c] || inp[0])) || (this.zero || (this.zero = new Float32Array(frames)))); y.push(out[c] || out[0]); }
+      const g = this.chain.grain;                                    // the granulator runs while the sound plays, or always if 'free'
+      g.hold = !this.playing && !this.p.grain.free;                    // (not playing: the live buffer keeps what it has)
+      g.run = this.playing || this.p.grain.free;
       this.chain.process(x, y, frames, this.p);
-      if (++this.tick % 10 === 0) this.port.postMessage({ meters: this.chain.meters() });
+      if (++this.tick % 6 === 0) { const m = this.chain.meters(); if (this.p.grain.on) m.grain = this.chain.grainInfo(); this.port.postMessage({ meters: m }); }
       return true;
     }
   }
