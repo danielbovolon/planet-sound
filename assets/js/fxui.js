@@ -6,9 +6,11 @@
  */
 import { createKnob } from './knobs.js';
 import { initGrainUi } from './grainui.js';
+let tpPre = { i: '', snap: null }, mbPre = { i: '', snap: null };   // the chosen preset stays shown while the settings still match it
 import { fxState, loadDsp, TAPE_PRESETS, MB_PRESETS, applyTapePreset, applyMbPreset } from './fx.js';
 
 const $ = (s, r = document) => r.querySelector(s);
+const tapeSnap = p => JSON.stringify([p.tape, p.speed]);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const BAND_COLORS = ['#D9A321', '#2A9D9F', '#D9663A'];
 const BAND_NAMES = ['Low', 'Mid', 'High'];
@@ -92,7 +94,7 @@ export async function initFxUi({ player, toast }) {
     onInput: v => chg('tape', d => { d.tape.vol = v; }),
   });
   $('#tp-on').addEventListener('click', () => chg(null, d => { d.tape.on = !d.tape.on; }));
-  $('#tp-pre').addEventListener('change', e => { const i = e.target.value; if (i === '') return; fxState.update(d => applyTapePreset(d, TAPE_PRESETS[+i][1])); });
+  $('#tp-pre').addEventListener('change', e => { const i = e.target.value; if (i === '') return; fxState.update(d => applyTapePreset(d, TAPE_PRESETS[+i][1])); tpPre = { i, snap: tapeSnap(fxState.get()) }; $('#tp-pre').value = i; });
   $('#tp-type').addEventListener('click', e => { const b = e.target.closest('button[data-t]'); if (b) chg('tape', d => { d.tape.type = b.dataset.t; }); });
 
   /* ---------------- Multiband ---------------- */
@@ -154,7 +156,7 @@ export async function initFxUi({ player, toast }) {
   });
   $('#mb-g0').classList.add('three'); $('#mb-g0').style.gridTemplateColumns = 'repeat(3, 1fr)';
   $('#mb-on').addEventListener('click', () => chg(null, d => { d.mb.on = !d.mb.on; }));
-  $('#mb-pre').addEventListener('change', e => { const i = e.target.value; if (i === '') return; fxState.update(d => applyMbPreset(d, MB_PRESETS[+i][1])); });
+  $('#mb-pre').addEventListener('change', e => { const i = e.target.value; if (i === '') return; fxState.update(d => applyMbPreset(d, MB_PRESETS[+i][1])); mbPre = { i, snap: JSON.stringify(fxState.get().mb) }; $('#mb-pre').value = i; });
   $('#mb-det').addEventListener('click', e => { const b = e.target.closest('button[data-r]'); if (b) chg('mb', d => { d.mb.rms = b.dataset.r === '1'; }); });
   $('#mb-knee').addEventListener('click', e => { const b = e.target.closest('button[data-k]'); if (b) chg('mb', d => { d.mb.knee = b.dataset.k === '1'; }); });
   tabs.addEventListener('click', e => {
@@ -210,7 +212,8 @@ export async function initFxUi({ player, toast }) {
     const parts = []; if (t.on) parts.push('Tape'); if (m.on) parts.push('Multiband'); if (p.grain.on) parts.push('Granulator'); if (p.speed !== 1) parts.push(`${Math.round(p.speed * 100)} % speed`);
     stateEl.textContent = parts.length ? parts.join(' + ') : 'Off'; stateEl.classList.toggle('live', parts.length > 0);
     box.dataset.shaped = parts.length ? '1' : '';
-    $('#tp-pre').value = ''; $('#mb-pre').value = '';
+    $('#tp-pre').value = tpPre.snap && tapeSnap(p) === tpPre.snap ? tpPre.i : '';
+    $('#mb-pre').value = mbPre.snap && JSON.stringify(p.mb) === mbPre.snap ? mbPre.i : '';
     drawStrip(); drawCurve();
   }
 

@@ -43,7 +43,7 @@ export function initGrainUi({ host, player, chg, say }) {
     <div class="grp"><h4>Pitch <label class="gr-scale">Scale <select id="gr-scale" aria-label="Quantise the random pitch to a scale">${SCALE_NAMES.map(([v, n]) => `<option value="${v}">${n}</option>`).join('')}</select></label></h4><div class="knobs three" id="gr-g3"></div></div>
     <div class="grp"><h4>Shape · spread</h4><div class="knobs" id="gr-g4"></div></div>
     <div class="grp"><h4>Output</h4><div class="knobs" id="gr-g5"></div></div>
-    <div class="gr-foot"><button type="button" class="sw" id="gr-free" aria-pressed="false" title="Keep granulating when the sound is stopped"><i class="lamp"></i>Run when stopped</button><button type="button" class="btn quiet" id="gr-dice" title="Draw a different random pattern">New random</button><span class="gr-read" id="gr-read"></span></div>`;
+    <div class="gr-foot"><button type="button" class="sw" id="gr-free" aria-pressed="false" title="Keep the granulator sounding when the recording is stopped, so you can shape a texture without the sound playing"><i class="lamp"></i>Free-running</button><span class="gr-read" id="gr-read"></span></div>`;
   const $ = s => host.querySelector(s);
   const K = {};
   const kn = (id, o) => { const h = el('div'); $(id).append(h); return createKnob(h, { small: true, ...o }); };
@@ -54,6 +54,7 @@ export function initGrainUi({ host, player, chg, say }) {
   // Grains
   K.rate = kn('#gr-g1', { label: 'Rate', min: 0.5, max: 200, scale: 'log', steps: 160, value: 20, def: 20, origin: 0.5, round: v => +v.toPrecision(3), format: v => `${v < 10 ? v.toFixed(1) : Math.round(v)} Hz`, speech: v => `${v.toFixed(1)} grains per second`, hint: 'How many grains start every second.', onInput: v => chg('grain', d => { d.grain.rate = v; }) });
   K.size = kn('#gr-g1', { label: 'Size', min: 5, max: 2000, scale: 'log', steps: 160, value: 120, def: 120, origin: 5, round: v => (v < 100 ? +v.toFixed(1) : Math.round(v)), format: msf, hint: 'Length of each grain.', onInput: v => chg('grain', d => { d.grain.size = v; }) });
+  let presetIdx = '', presetSnap = null;   // the chosen preset stays shown for as long as the settings still match it
   K.rndSize = pctKnob('#gr-g1', 'rndSize', 'Size var', 'Random grain length: up to an octave longer or shorter.');
   K.jitter = pctKnob('#gr-g1', 'jitter', 'Time var', 'Classic only: how irregular the timing is.');
   // Position
@@ -77,14 +78,13 @@ export function initGrainUi({ host, player, chg, say }) {
   K.lp = kn('#gr-g5', { label: 'Low-pass', min: 200, max: 22000, scale: 'log', steps: 120, value: 22000, def: 22000, origin: 22000, round: v => Math.round(v / 10) * 10, format: v => (v >= 21900 ? 'Off' : hzf(v)), hint: 'Cuts the highs of the grains.', onInput: v => chg('grain', d => { d.grain.lp = v; }) });
 
   $('#gr-on').addEventListener('click', () => chg(null, d => { d.grain.on = !d.grain.on; }));
-  $('#gr-pre').addEventListener('change', e => { const i = e.target.value; if (i === '') return; fxState.update(d => applyGrainPreset(d, GRAIN_PRESETS[+i][1])); });
+  $('#gr-pre').addEventListener('change', e => { const i = e.target.value; if (i === '') return; fxState.update(d => applyGrainPreset(d, GRAIN_PRESETS[+i][1])); presetIdx = i; presetSnap = JSON.stringify(fxState.get().grain); $('#gr-pre').value = i; });
   $('#gr-mode').addEventListener('click', e => { const b = e.target.closest('button[data-m]'); if (b) chg('grain', d => { d.grain.mode = b.dataset.m; }); });
   $('#gr-src').addEventListener('click', e => { const b = e.target.closest('button[data-s]'); if (b) chg('grain', d => { d.grain.src = b.dataset.s; }); });
   $('#gr-buf').addEventListener('click', e => { const b = e.target.closest('button[data-b]'); if (b) chg('grain', d => { d.grain.bufSec = +b.dataset.b; }); });
   $('#gr-freeze').addEventListener('click', () => chg('grain', d => { d.grain.freeze = !d.grain.freeze; }));
   $('#gr-free').addEventListener('click', () => chg('grain', d => { d.grain.free = !d.grain.free; }));
   $('#gr-scale').addEventListener('change', e => chg('grain', d => { d.grain.scale = e.target.value; }));
-  $('#gr-dice').addEventListener('click', () => chg('grain', d => { d.grain.seed = Math.floor(Math.random() * 99999); }));
 
   /* ---------------- drawing ---------------- */
   const bufCv = $('#gr-buf-cv'), overCv = $('#gr-over'), overBox = $('#gr-over-box');
@@ -157,8 +157,8 @@ export function initGrainUi({ host, player, chg, say }) {
         g.fillStyle = signal; g.fillRect(x0 - 1, 0, 3, h); g.fillRect(x1 - 2, 0, 3, h);
       }
     }
-    $('#gr-capl').textContent = p.src === 'region' ? secf(p.rStart) : 'older';
-    $('#gr-capr').textContent = p.src === 'region' ? secf(p.rStart + p.rLen) : (p.freeze ? 'frozen' : 'now');
+    $('#gr-capl').textContent = p.src === 'region' ? secf(p.rStart) : '';
+    $('#gr-capr').textContent = p.src === 'region' ? secf(p.rStart + p.rLen) : (p.freeze ? 'frozen' : '');
   }
   /** Overview peaks of the whole recording (once per sound). */
   function updateOverview() {
@@ -203,7 +203,7 @@ export function initGrainUi({ host, player, chg, say }) {
   let lastOn = false, hintT = 0;
   function sync(p) {
     const g = p.grain;
-    if (g.on && !lastOn && !(player.fxp && player.fxp.playing) && !g.free) { say('Press play: the grains run along with the sound. “Run when stopped” lets them play without it.'); clearTimeout(hintT); hintT = setTimeout(() => say(''), 6000); }
+    if (g.on && !lastOn && !(player.fxp && player.fxp.playing) && !g.free) { say('Press play: the grains run along with the sound. “Free-running” lets them play without it.'); clearTimeout(hintT); hintT = setTimeout(() => say(''), 6000); }
     lastOn = g.on;
     K.rate.set(g.rate, false); K.size.set(g.size, false); K.rndSize.set(g.rndSize * 100, false); K.jitter.set(g.jitter * 100, false);
     K.pos.set(g.pos * 100, false); K.spray.set(g.spray * 100, false); K.scan.set(g.scan, false); K.voices.set(g.voices, false);
@@ -217,7 +217,7 @@ export function initGrainUi({ host, player, chg, say }) {
     $('#gr-buf').hidden = g.src !== 'live'; $('#gr-freeze').hidden = g.src !== 'live';
     $('#gr-freeze').setAttribute('aria-pressed', String(g.freeze)); $('#gr-freeze .lamp').classList.toggle('on', g.freeze);
     $('#gr-free').setAttribute('aria-pressed', String(g.free)); $('#gr-free .lamp').classList.toggle('on', g.free);
-    $('#gr-scale').value = g.scale; $('#gr-pre').value = '';
+    $('#gr-scale').value = g.scale; $('#gr-pre').value = presetSnap && JSON.stringify(g) === presetSnap ? presetIdx : '';
     K.jitter.disable(g.mode === 'cloud', 'Classic timing only');
     overBox.hidden = g.src !== 'region';
     const ov = g.rate * g.size / 1000;

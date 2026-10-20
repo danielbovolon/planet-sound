@@ -5,10 +5,10 @@
  *   draw in the field.
  * - The catalogue is fetched fresh when possible, cached as a fallback.
  * Bump VERSION whenever you deploy changed files. */
-const VERSION = 'ps-2026-10-20f';
+const VERSION = 'ps-2026-10-20g';
 const SHELL = [
   './', 'index.html', 'config.js', 'manifest.webmanifest',
-  'assets/css/app.css', 'assets/css/glass.css', 'assets/css/recorder.css', 'assets/css/fx.css', 'assets/css/update4.css', 'assets/css/nobox.css',
+  'assets/css/app.css', 'assets/css/glass.css', 'assets/css/recorder.css', 'assets/css/fx.css', 'assets/css/update4.css', 'assets/css/nobox.css', 'assets/css/finish.css',
   'assets/js/app.js', 'assets/js/api.js', 'assets/js/ui.js', 'assets/js/store.js', 'assets/js/map.js', 'assets/js/player.js', 'assets/js/studio.js', 'assets/js/space.js', 'assets/js/sky.js', 'assets/img/milkyway-small.jpg',
   'assets/js/share.js', 'assets/js/wav.js', 'assets/js/knobs.js', 'assets/js/fx.js', 'assets/js/fxui.js', 'assets/js/fxexport.js', 'assets/js/grainui.js', 'assets/js/cardplus.js', 'assets/js/contributors.js', 'assets/js/listen.js',
   'assets/js/audio/engine.js', 'assets/js/audio/flac.js', 'assets/js/audio/analysis.js', 'assets/js/audio/take-worker.js', 'assets/js/audio/capture-worklet.js', 'assets/js/audio/sat-worklet.js', 'assets/js/audio/fx-dsp.js',

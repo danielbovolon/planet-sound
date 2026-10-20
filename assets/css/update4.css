@@ -2,47 +2,31 @@
    Entry card: thumbnail photo, full screen, Loop + second player.  Menu: crisp text on solid pills.
    Index: contributors line.  Loaded last, so it only adds to / refines the other style sheets. */
 
-/* ---------- the menu: sharp text on a solid pill, no blur, no halos ---------- */
-.bar .halo, .bar .name, .views button, .you, .search input { text-shadow: none; }
-.brand { filter: none; padding: 4px 14px 4px 9px; border-radius: 999px; background: color-mix(in srgb, var(--sheet) 94%, transparent); border: 1px solid var(--rule); box-shadow: 0 1px 2px #1E2B4D1f; }
+/* ---------- the menu: plain, sharp text — no boxes, no blur ---------- */
+.bar .halo, .bar .name, .views button, .you { text-shadow: none; -webkit-text-stroke: 3px var(--paper); paint-order: stroke fill; }
+.search input { text-shadow: none; }
+@media (min-width: 861px) { .search input { -webkit-text-stroke: 3px var(--paper); paint-order: stroke fill; } }
+/* in full screen the card is the whole page: nothing of the bar should show through its glass */
+body.card-expanded .bar, body.card-expanded .rec-btn { visibility: hidden; }
+.brand { filter: none; background: none; border: 0; box-shadow: none; padding: 4px 4px 4px 2px; }
 .brand .name { font-weight: 650; letter-spacing: -0.005em; }
-.bar .views {
-  gap: 2px; margin-left: 10px; padding: 3px; border-radius: 999px;
-  background: color-mix(in srgb, var(--sheet) 94%, transparent); border: 1px solid var(--rule); box-shadow: 0 1px 2px #1E2B4D1f;
-}
+.bar .views { gap: 4px; margin-left: 14px; padding: 0; background: none; border: 0; box-shadow: none; }
 .views button, .views .you {
-  padding: 6px 15px; border-radius: 999px; font-size: 14px; font-weight: 600; letter-spacing: .01em; line-height: 1.3;
-  color: var(--ink); background: none; box-shadow: none; transition: background .12s, color .12s;
+  padding: 8px 10px; border-radius: 0; font-size: 14.5px; font-weight: 650; letter-spacing: .01em; line-height: 1.3;
+  color: var(--ink); background: none; box-shadow: none;
 }
-.views button:hover, .views .you:hover { background: color-mix(in srgb, var(--ink) 9%, transparent); color: var(--ink); }
-.views button[aria-pressed="true"] { background: var(--ink); color: var(--paper); box-shadow: none; border-radius: 999px; }
-.rec-btn { box-shadow: 0 1px 2px #1E2B4D33; }
-
-@media (min-width: 861px) {
-  .search input {
-    height: 38px; padding: 0 14px 0 36px; border-radius: 999px; border: 1px solid var(--rule);
-    background: color-mix(in srgb, var(--sheet) 94%, transparent); box-shadow: 0 1px 2px #1E2B4D1f;
-  }
-  .search input:focus { border-color: var(--ink); }
-  .search::before { left: 13px; top: 13px; box-shadow: none; }
-  .search::after { left: 23px; top: 24px; box-shadow: none; }
-  .search input::placeholder { color: var(--graphite); opacity: 1; }
-}
+.views button:hover, .views .you:hover { background: none; color: var(--ink); text-decoration: underline; text-underline-offset: 6px; text-decoration-thickness: 1.5px; }
+.views button[aria-pressed="true"] { background: none; color: var(--ink); box-shadow: inset 0 -2px 0 var(--ink); border-radius: 0; }
+.rec-btn { box-shadow: none; }
+.search::before, .search::after { box-shadow: none; }
+@media (min-width: 861px) { .search input::placeholder { color: var(--ink); opacity: .8; } }
+.menu-btn span { box-shadow: none; }
 @media (max-width: 860px) {
-  .search::before, .search::after { box-shadow: none; }
-  .menu-btn {
-    width: 40px; height: 40px; border-radius: 50%; background: color-mix(in srgb, var(--sheet) 94%, transparent);
-    border: 1px solid var(--rule); box-shadow: 0 1px 2px #1E2B4D1f;
-  }
-  .menu-btn span { box-shadow: none; width: 18px; }
-  .search { margin-left: auto; }
-  .search input { text-shadow: none; }
-  .bar.open .views {
-    top: calc(var(--bar-h) + 2px); right: 8px; min-width: 190px; padding: 6px; gap: 2px; align-items: stretch;
-    border-radius: 18px; background: var(--sheet); border: 1px solid var(--rule); box-shadow: var(--shadow);
-  }
-  .bar.open .views button, .bar.open .views .you { text-align: left; padding: 12px 16px; font-size: 16px; font-weight: 600; border-radius: 12px; color: var(--ink); }
-  .bar.open .views button[aria-pressed="true"] { background: var(--ink); color: var(--paper); font-weight: 600; }
+  .menu-btn { background: none; border: 0; box-shadow: none; border-radius: 0; }
+  .menu-btn span { width: 22px; }
+  .bar.open .views { background: none; border: 0; box-shadow: none; padding: 0; border-radius: 0; min-width: 0; align-items: flex-end; top: calc(var(--bar-h) - 6px); }
+  .bar.open .views button, .bar.open .views .you { text-align: right; padding: 10px 8px; font-size: 17px; font-weight: 650; border-radius: 0; background: none; color: var(--ink); }
+  .bar.open .views button[aria-pressed="true"] { background: none; box-shadow: inset 0 -2px 0 var(--ink); }
 }
 
 /* ---------- entry card: place on the left, small photo on the right ---------- */
@@ -65,9 +49,9 @@
 .ic svg { width: 18px; height: 18px; fill: none; stroke: var(--ink); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .ic .i-leave, .ic[aria-pressed="true"] .i-enter { display: none; }
 .ic[aria-pressed="true"] .i-leave { display: inline; }
-.card.expanded, .card:fullscreen {
+.card.expanded {
   position: fixed; inset: 0; top: 0; right: 0; bottom: 0; left: 0; width: auto; height: auto; max-height: none;
-  border-radius: 0; border: 0; z-index: 36; background: var(--sheet); -webkit-backdrop-filter: none; backdrop-filter: none;
+  border-radius: 0; border: 0; z-index: 36;
 }
 .card.expanded .card-grip { display: none; }
 .card.expanded .card-scroll { padding-inline: max(22px, calc((100% - 780px) / 2)); padding-top: calc(16px + env(safe-area-inset-top, 0px)); padding-bottom: calc(40px + var(--safe-b)); }
@@ -75,7 +59,7 @@
 @media (max-width: 860px) { .card.expanded .card-scroll { padding-inline: 18px; } .card.expanded { transition: none; } }
 
 /* ---------- Loop and the second player ---------- */
-.loopbar { margin-top: 14px; padding: 12px 14px; border-radius: 16px; border: 1px solid var(--rule); background: color-mix(in srgb, var(--paper) 40%, transparent); }
+.loopbar { margin: 4px 0 14px; padding: 12px 14px; border-radius: 16px; border: 1px solid var(--rule); background: color-mix(in srgb, var(--paper) 40%, transparent); }
 .loop { position: relative; display: inline-flex; align-items: center; gap: 10px; font-weight: 600; cursor: pointer; user-select: none; -webkit-user-select: none; }
 .loop input { position: absolute; opacity: 0; width: 1px; height: 1px; }
 .loop-sw { position: relative; width: 40px; height: 23px; border-radius: 12px; background: color-mix(in srgb, var(--graphite) 38%, transparent); transition: background .15s; flex: none; }

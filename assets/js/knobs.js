@@ -1,7 +1,7 @@
 /* Planet Sound — rotary knobs (the recorder's Gain, the Tape and Multiband controls).
  *
- * The look: a small piece of 1960s Italian studio hardware — a knurled black bakelite knob with a brushed-
- * aluminium cap, a printed scale around it, a cream pointer line. The scale lights up as the value rises.
+ * The look: a Moog-style synthesizer knob — black, with a scalloped (fluted) skirt, a tapered barrel and a flat
+ * brushed-aluminium cap, a white indicator line running from the cap down over the barrel, a printed scale around it. The scale lights up as the value rises.
  *
  * A knob is a real slider for assistive technology (role="slider", arrow keys) and a knob for everyone else:
  *   drag up or down (Shift: fine) · mouse wheel · arrow keys (Shift: five steps, PageUp/Down: big steps)
@@ -22,17 +22,26 @@ function ensureDefs() {
   d.setAttribute('width', '0'); d.setAttribute('height', '0'); d.setAttribute('aria-hidden', 'true');
   d.style.cssText = 'position:absolute;width:0;height:0;overflow:hidden';
   d.innerHTML = `<defs>
-    <radialGradient id="psk-skirt" cx="38%" cy="30%" r="85%"><stop offset="0" stop-color="#8d8f93"/><stop offset=".35" stop-color="#4a4c50"/><stop offset=".8" stop-color="#202124"/><stop offset="1" stop-color="#0e0f10"/></radialGradient>
-    <linearGradient id="psk-rim" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffffff" stop-opacity=".7"/><stop offset=".5" stop-color="#ffffff" stop-opacity="0"/><stop offset="1" stop-color="#000000" stop-opacity=".6"/></linearGradient>
-    <radialGradient id="psk-body" cx="36%" cy="26%" r="95%"><stop offset="0" stop-color="#5b5754"/><stop offset=".45" stop-color="#2c2a28"/><stop offset="1" stop-color="#121110"/></radialGradient>
-    <radialGradient id="psk-cap" cx="40%" cy="30%" r="85%"><stop offset="0" stop-color="#f6f5f1"/><stop offset=".45" stop-color="#c3c5c7"/><stop offset="1" stop-color="#7d8085"/></radialGradient>
-    <linearGradient id="psk-ptr" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#fff6dc"/><stop offset="1" stop-color="#e3d2a3"/></linearGradient>
+    <radialGradient id="psk-skirt" cx="36%" cy="26%" r="92%"><stop offset="0" stop-color="#6c6e72"/><stop offset=".3" stop-color="#2c2d30"/><stop offset=".75" stop-color="#101112"/><stop offset="1" stop-color="#050506"/></radialGradient>
+    <linearGradient id="psk-rim" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffffff" stop-opacity=".55"/><stop offset=".45" stop-color="#ffffff" stop-opacity="0"/><stop offset="1" stop-color="#000000" stop-opacity=".7"/></linearGradient>
+    <radialGradient id="psk-body" cx="34%" cy="24%" r="100%"><stop offset="0" stop-color="#85878b"/><stop offset=".22" stop-color="#3a3b3e"/><stop offset=".62" stop-color="#151617"/><stop offset="1" stop-color="#0a0a0b"/></radialGradient>
+    <linearGradient id="psk-wall" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#9a9ca0" stop-opacity=".9"/><stop offset=".35" stop-color="#2a2b2d" stop-opacity=".3"/><stop offset="1" stop-color="#000" stop-opacity=".9"/></linearGradient>
+    <radialGradient id="psk-cap" cx="38%" cy="28%" r="90%"><stop offset="0" stop-color="#fbfbf8"/><stop offset=".35" stop-color="#d6d8da"/><stop offset=".75" stop-color="#a1a4a8"/><stop offset="1" stop-color="#7a7d82"/></radialGradient>
+    <linearGradient id="psk-capbev" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset=".5" stop-color="#9a9da1"/><stop offset="1" stop-color="#2a2c2f"/></linearGradient>
+    <linearGradient id="psk-sheen" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".55"/><stop offset=".5" stop-color="#fff" stop-opacity="0"/><stop offset=".62" stop-color="#fff" stop-opacity=".25"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>
+    <linearGradient id="psk-ptr" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#e9e9e4"/></linearGradient>
     <filter id="psk-blur" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="2.2"/></filter>
   </defs>`;
   document.body.prepend(d);
 }
 const pt = (a, r) => { const t = (a - 90) * Math.PI / 180; return [C + r * Math.cos(t), C + r * Math.sin(t)]; };
 const f2 = n => n.toFixed(2);
+const wavy = (r0, amp, lobes, n = 240) => {      // a round outline with soft scallops, like a fluted knob skirt
+  let d = '';
+  for (let i = 0; i <= n; i++) { const t = i / n * Math.PI * 2, r = r0 + amp * Math.cos(lobes * t), x = C + r * Math.sin(t), y = C - r * Math.cos(t); d += (i ? 'L' : 'M') + f2(x) + ' ' + f2(y); }
+  return d + 'Z';
+};
+const SKIRT = wavy(35.6, 1.9, 20), BARREL = wavy(30.6, 1.1, 20), BARREL_IN = wavy(28.4, .6, 20);
 const FLUTES = (() => {                          // the fluted edge of the knob: 60 short radial strokes, a knurled edge
   let d = '';
   for (let i = 0; i < 60; i++) { const a = i * 6, [x0, y0] = pt(a, 29.4), [x1, y1] = pt(a, 33.2); d += `M${f2(x0)} ${f2(y0)}L${f2(x1)} ${f2(y1)}`; }
@@ -79,18 +88,21 @@ export function createKnob(host, o) {
     ticks.push({ el: t, a });
   }
   { const [x0, y0] = pt(ang(def), 38.5), [x1, y1] = pt(ang(def), 48.5); el('line', { x1: f2(x0), y1: f2(y0), x2: f2(x1), y2: f2(y1), class: 'k-def' }); }
-  // the knob itself
-  el('ellipse', { cx: 50, cy: 56, rx: 37, ry: 35, class: 'k-shadow', filter: 'url(#psk-blur)' });
-  el('circle', { cx: 50, cy: 50, r: 37, fill: 'url(#psk-skirt)' });
-  el('circle', { cx: 50, cy: 50, r: 36.6, fill: 'none', stroke: 'url(#psk-rim)', 'stroke-width': 1.2 });
+  // the knob itself: black skirt with a scalloped edge, tapered barrel, flat brushed-aluminium cap, white indicator line
+  el('ellipse', { cx: 50, cy: 56.5, rx: 37, ry: 35, class: 'k-shadow', filter: 'url(#psk-blur)' });
   const rot = el('g', {});
-  el('circle', { cx: 50, cy: 50, r: 33.2, fill: 'url(#psk-body)', class: 'k-body' }, rot);
-  el('path', { d: FLUTES, class: 'k-flutes' }, rot);
-  el('circle', { cx: 50, cy: 50, r: 24.5, fill: 'url(#psk-cap)', class: 'k-cap' }, rot);
-  for (const r of [21, 17.5, 14, 10.5]) el('circle', { cx: 50, cy: 50, r, fill: 'none', class: 'k-turn' }, rot);
-  el('circle', { cx: 50, cy: 50, r: 24.5, fill: 'none', class: 'k-cap-ring' }, rot);
-  el('rect', { x: 48.5, y: 13.4, width: 3, height: 13, rx: 1.5, fill: 'url(#psk-ptr)', class: 'k-pointer' }, rot);
-  el('ellipse', { cx: 41, cy: 38, rx: 9, ry: 4.6, transform: 'rotate(-38 41 38)', fill: '#fff', opacity: '.22', class: 'k-shine' });
+  el('path', { d: SKIRT, fill: 'url(#psk-skirt)' }, rot);
+  el('path', { d: SKIRT, fill: 'none', stroke: 'url(#psk-rim)', 'stroke-width': 1 }, rot);
+  el('path', { d: BARREL, fill: 'url(#psk-body)' }, rot);
+  el('path', { d: BARREL, fill: 'none', stroke: 'url(#psk-wall)', 'stroke-width': 1.3 }, rot);
+  el('path', { d: BARREL_IN, fill: 'none', stroke: '#000', 'stroke-opacity': '.55', 'stroke-width': .8 }, rot);
+  el('circle', { cx: 50, cy: 50, r: 25.2, fill: 'none', stroke: 'url(#psk-capbev)', 'stroke-width': 1.6, class: 'k-bevel' }, rot);
+  el('circle', { cx: 50, cy: 50, r: 24, fill: 'url(#psk-cap)', class: 'k-cap' }, rot);
+  for (let r = 3; r < 24; r += 1.05) el('circle', { cx: 50, cy: 50, r: f2(r), fill: 'none', class: 'k-brush', stroke: '#2b2f35', 'stroke-width': .5, 'stroke-opacity': (0.05 + 0.07 * ((r * 7) % 3) / 3).toFixed(3) }, rot);   // brushed (turned) metal
+  el('circle', { cx: 50, cy: 50, r: 24, fill: 'url(#psk-sheen)', class: 'k-sheen', 'pointer-events': 'none' });
+  el('circle', { cx: 50, cy: 50, r: 24, fill: 'none', class: 'k-cap-ring' }, rot);
+  el('rect', { x: 48.8, y: 13.6, width: 2.4, height: 11.4, rx: 1.1, fill: 'url(#psk-ptr)', class: 'k-pointer' }, rot);   // white line, cap edge to rim
+  el('ellipse', { cx: 40, cy: 33, rx: 10, ry: 3.6, transform: 'rotate(-40 40 33)', fill: '#fff', opacity: '.16', class: 'k-shine' });
   knob.append(svg);
   const out = document.createElement('output'); out.className = 'knob-val';
   host.append(name, knob, out);

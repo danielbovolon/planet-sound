@@ -10,7 +10,7 @@ export function initContributors({ call, getView }) {
   let last = 0, busy = false;
   const show = c => {
     if (!Number.isFinite(c) || c < 0) { line.hidden = true; return; }
-    n.textContent = c.toLocaleString(); l.textContent = c === 1 ? 'contributor' : 'contributors'; sm.textContent = c === 1 ? 'has added sound to the project' : 'have added sound to the project'; line.hidden = false;
+    n.textContent = c.toLocaleString(); l.textContent = c === 1 ? 'contributor' : 'contributors'; if (sm) sm.textContent = c === 1 ? 'has added sound to the project' : 'have added sound to the project'; line.hidden = false;
   };
   async function refresh(force) {
     if (busy || (!force && Date.now() - last < 5000)) return;

@@ -33,7 +33,9 @@ export function initCardPlus({ card }) {
 
   /* ---- full screen ---- */
   const btn = $('#c-full');
-  const native = !!(card.requestFullscreen || card.webkitRequestFullscreen);
+  // the whole page goes full screen (not just the card), so the glass card keeps the map behind it and looks the same
+  const root = document.documentElement;
+  const native = !!(root.requestFullscreen || root.webkitRequestFullscreen);
   const fsEl = () => document.fullscreenElement || document.webkitFullscreenElement || null;
   const isFull = () => card.classList.contains('expanded');
   function paint() {
@@ -46,19 +48,19 @@ export function initCardPlus({ card }) {
   async function enter() {
     card.classList.add('expanded'); paint();
     if (native) {
-      try { await (card.requestFullscreen || card.webkitRequestFullscreen).call(card); } catch { /* the full-window layout stays */ }
+      try { await (root.requestFullscreen || root.webkitRequestFullscreen).call(root); } catch { /* the full-window layout stays */ }
     }
   }
   async function leave() {
     card.classList.remove('expanded'); paint();
-    if (fsEl() === card) { try { await (document.exitFullscreen || document.webkitExitFullscreen).call(document); } catch {} }
+    if (fsEl() === root) { try { await (document.exitFullscreen || document.webkitExitFullscreen).call(document); } catch {} }
   }
   btn.addEventListener('click', () => (isFull() ? leave() : enter()));
-  const onFsChange = () => { if (isFull() && native && fsEl() !== card && !card.dataset.entering) { card.classList.remove('expanded'); paint(); } };
+  const onFsChange = () => { if (isFull() && native && fsEl() !== root && !card.dataset.entering) { card.classList.remove('expanded'); paint(); } };
   document.addEventListener('fullscreenchange', onFsChange);
   document.addEventListener('webkitfullscreenchange', onFsChange);
   // the layout-only version has no browser Esc, so give it one
-  document.addEventListener('keydown', e => { if (e.key === 'Escape' && isFull() && fsEl() !== card) leave(); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && isFull() && fsEl() !== root) leave(); });
 
   return { setPhoto, leave: () => { setBig(false); if (isFull()) leave(); } };
 }
