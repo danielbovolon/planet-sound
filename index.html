@@ -24,6 +24,7 @@
 <link rel="stylesheet" href="assets/css/recorder.css">
 <link rel="stylesheet" href="assets/css/fx.css">
 <link rel="stylesheet" href="assets/css/update4.css">
+<link rel="stylesheet" href="assets/css/nobox.css">
 <script src="config.js"></script>
 </head>
 <body>
@@ -174,6 +175,14 @@
 
     <details class="shape" id="shape" hidden>
       <summary><span>Sound shaping</span><span class="shape-state" id="shape-state">Off</span></summary>
+      <div class="loopbar" id="loopbar">
+      <label class="loop" title="Play this recording again and again"><input type="checkbox" id="c-loop"><span class="loop-sw" aria-hidden="true"></span><span>Loop</span></label>
+      <div class="mini" id="mini" role="group" aria-label="Player">
+        <button type="button" class="mplay" id="m-play" aria-label="Play"><svg viewBox="0 0 24 24" aria-hidden="true"><path class="i-play" d="M8 5.5v13l10.5-6.5z"/><g class="i-pause"><rect x="7" y="5.5" width="3.6" height="13"/><rect x="13.4" y="5.5" width="3.6" height="13"/></g></svg></button>
+        <input class="mseek" id="m-seek" type="range" min="0" max="1000" value="0" aria-label="Position">
+        <span class="mtime"><span id="m-el">0:00</span> / <span id="m-du">0:00</span></span>
+      </div>
+    </div>
       <div class="rack" id="rack">
         <div class="rack-tabs" role="tablist" aria-label="Effect">
           <button type="button" class="rack-tab" role="tab" id="tab-tape" aria-selected="true" aria-controls="rk-tape"><i class="lamp" id="lamp-tape"></i>Tape</button>
@@ -190,15 +199,6 @@
         </div>
       </div>
     </details>
-
-    <div class="loopbar" id="loopbar">
-      <label class="loop" title="Play this recording again and again"><input type="checkbox" id="c-loop"><span class="loop-sw" aria-hidden="true"></span><span>Loop</span></label>
-      <div class="mini" id="mini" role="group" aria-label="Player">
-        <button type="button" class="mplay" id="m-play" aria-label="Play"><svg viewBox="0 0 24 24" aria-hidden="true"><path class="i-play" d="M8 5.5v13l10.5-6.5z"/><g class="i-pause"><rect x="7" y="5.5" width="3.6" height="13"/><rect x="13.4" y="5.5" width="3.6" height="13"/></g></svg></button>
-        <input class="mseek" id="m-seek" type="range" min="0" max="1000" value="0" aria-label="Position">
-        <span class="mtime"><span id="m-el">0:00</span> / <span id="m-du">0:00</span></span>
-      </div>
-    </div>
 
     <div class="c-actions">
       <button type="button" class="btn" id="c-dl" hidden>Export WAV</button>

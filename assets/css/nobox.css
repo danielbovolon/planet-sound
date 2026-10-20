@@ -1,0 +1,24 @@
+/* Planet Sound — the top bar has no boxes: logo, title, menu, search and menu button are plain, sharp text
+   (a hard outline in the page colour keeps it readable over the map; nothing is blurred). Loaded last. */
+.brand, .bar .views, .views button, .views .you, .menu-btn, .search input, .bar.open .views {
+  background: none !important; border: 0 !important; box-shadow: none !important; border-radius: 0 !important; filter: none !important;
+  -webkit-backdrop-filter: none !important; backdrop-filter: none !important;
+}
+.brand { padding: 4px 4px 4px 2px; }
+.bar .views { padding: 0; gap: 4px; margin-left: 14px; }
+.bar .halo, .bar .name, .views button, .views .you { text-shadow: none; -webkit-text-stroke: 3px var(--paper); paint-order: stroke fill; color: var(--ink); }
+.views button, .views .you { padding: 8px 10px; font-size: 14.5px; font-weight: 650; letter-spacing: .01em; }
+.views button:hover, .views .you:hover { color: var(--ink); text-decoration: underline; text-underline-offset: 6px; text-decoration-thickness: 1.5px; }
+.views button[aria-pressed="true"] { color: var(--ink); box-shadow: inset 0 -2px 0 var(--ink) !important; }
+.search::before, .search::after { box-shadow: none; }
+@media (min-width: 861px) {
+  .search input { padding: 0 4px 0 34px; border-bottom: 1px solid transparent !important; text-shadow: none; -webkit-text-stroke: 3px var(--paper); paint-order: stroke fill; }
+  .search input:focus { border-bottom-color: var(--ink) !important; }
+  .search input::placeholder { color: var(--ink); opacity: .8; }
+  .search::before { left: 12px; top: 11px; } .search::after { left: 22px; top: 22px; }
+}
+.menu-btn span { box-shadow: none; }
+@media (max-width: 860px) {
+  .bar.open .views { padding: 0; min-width: 0; align-items: flex-end; top: calc(var(--bar-h) - 6px); }
+  .bar.open .views button, .bar.open .views .you { text-align: right; padding: 10px 8px; font-size: 17px; }
+}
