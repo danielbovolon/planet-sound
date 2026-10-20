@@ -5,13 +5,13 @@
  *   draw in the field.
  * - The catalogue is fetched fresh when possible, cached as a fallback.
  * Bump VERSION whenever you deploy changed files. */
-const VERSION = 'ps-2026-10-16a';
+const VERSION = 'ps-2026-10-20a';
 const SHELL = [
   './', 'index.html', 'config.js', 'manifest.webmanifest',
-  'assets/css/app.css', 'assets/css/glass.css',
+  'assets/css/app.css', 'assets/css/glass.css', 'assets/css/recorder.css', 'assets/css/fx.css',
   'assets/js/app.js', 'assets/js/api.js', 'assets/js/ui.js', 'assets/js/store.js', 'assets/js/map.js', 'assets/js/player.js', 'assets/js/studio.js', 'assets/js/space.js', 'assets/js/sky.js', 'assets/img/milkyway-small.jpg',
-  'assets/js/share.js', 'assets/js/wav.js',
-  'assets/js/audio/engine.js', 'assets/js/audio/flac.js', 'assets/js/audio/analysis.js', 'assets/js/audio/take-worker.js', 'assets/js/audio/capture-worklet.js',
+  'assets/js/share.js', 'assets/js/wav.js', 'assets/js/knobs.js', 'assets/js/fx.js', 'assets/js/fxui.js', 'assets/js/fxexport.js',
+  'assets/js/audio/engine.js', 'assets/js/audio/flac.js', 'assets/js/audio/analysis.js', 'assets/js/audio/take-worker.js', 'assets/js/audio/capture-worklet.js', 'assets/js/audio/sat-worklet.js', 'assets/js/audio/fx-dsp.js',
   'vendor/maplibre/maplibre-gl.mjs', 'vendor/maplibre/maplibre-gl-shared.mjs', 'vendor/maplibre/maplibre-gl-worker.mjs', 'vendor/maplibre/maplibre-gl.css',
   'assets/img/logo.png', 'assets/img/favicon.png', 'assets/img/icon-192.png',
   'assets/fonts/libre-franklin-latin-400-normal.woff2', 'assets/fonts/libre-franklin-latin-500-normal.woff2',

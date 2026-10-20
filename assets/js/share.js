@@ -8,6 +8,8 @@
 import { $, $$, esc, accession, fmtTime, fmtCoords, fmtDate, fmtBytes, toast } from './ui.js';
 import { call, mediaUrl, identity } from './api.js';
 import { prefs } from './store.js';
+import { fxState } from './fx.js';
+import { fetchAudio, shapedChannels } from './fxexport.js';
 import { isWav, rewriteWav, wavFromChannels, safeName } from './wav.js';
 
 const baseUrl = () => location.origin + location.pathname.replace(/index\.html$/, '');
@@ -154,7 +156,8 @@ async function openAlbumLink() {
   if (!dlg.open) dlg.showModal();
 }
 
-/* ---------------- Share WAV ---------------- */
+/* ---------------- Export WAV ---------------- */
+/* "Export WAV" (and "Share WAV") open one dialog: name and description, the sound shaping that is switched on, then save or share. */
 const card = $('#card'), dlBtn = $('#c-dl'), wavBtn = $('#c-sharewav');
 /* shown only where the app itself offers the download: the author allowed it, or it is yours */
 function syncWavButton() { if (wavBtn) wavBtn.hidden = !dlBtn || dlBtn.hidden || card.hidden; }
@@ -168,15 +171,16 @@ const MAX_BYTES = 300 * 1024 * 1024;   // a browser has to hold the file in memo
 const dlg = document.createElement('dialog');
 dlg.className = 'sheet small'; dlg.id = 'wav-dlg';
 dlg.innerHTML = `
-  <form method="dialog" class="sheet-head"><h2>Share WAV</h2><button class="x" aria-label="Close" value="close"></button></form>
+  <form method="dialog" class="sheet-head"><h2>Export WAV</h2><button class="x" aria-label="Close" value="close"></button></form>
   <label class="field"><span>File name</span><input id="w-name" maxlength="100" autocomplete="off" spellcheck="false"></label>
   <label class="field"><span>Description</span><textarea id="w-desc" rows="4" maxlength="1000"></textarea></label>
   <p class="hint" id="w-info"></p>
+  <p class="hint" id="w-fx"></p>
   <div class="progress" id="w-prog" hidden><div></div></div>
   <p class="s-msg" id="w-msg" role="status"></p>
   <div class="row end"><button type="button" class="btn quiet" id="w-save">Save a copy</button><button type="button" class="btn solid" id="w-go">Prepare WAV</button></div>`;
 document.body.append(dlg);
-const W = { sound: null, raw: null, file: null, stamp: '', busy: false };
+const W = { sound: null, raw: null, file: null, stamp: '', busy: false, fx: '' };
 const wEl = id => $('#' + id, dlg);
 const setMsg = (t, err = false) => { const m = wEl('w-msg'); m.textContent = t; m.classList.toggle('err', err); };
 const setProg = f => { const p = wEl('w-prog'); p.hidden = f == null; if (f != null) p.firstElementChild.style.width = Math.round(Math.min(1, f) * 100) + '%'; };
@@ -190,12 +194,14 @@ wEl('w-desc').addEventListener('input', invalidate);
 async function openWav() {
   const no = new URLSearchParams(location.search).get('no');
   if (!no) return toast('Open a sound first.');
-  wavBtn.disabled = true;
+  const opener = this_button || dlBtn;
+  if (opener) opener.disabled = true;
   try {
     const { sound: s } = await call('/api/sounds/' + encodeURIComponent(no));
     if (!s.audio) return toast('This entry has no audio.');
     if (!(s.allowDownload || s.mine)) return toast('The recordist has not allowed downloads of the original.', 5000);
     W.sound = s; W.raw = null; W.file = null; W.busy = false;
+    W.fx = fxState.neutral() ? '' : fxState.describe();
     const acc = accession(s.no).replace(/\s+/g, '-');
     wEl('w-name').value = `${acc} ${s.title}`.slice(0, 100);
     const lines = [s.notes, [s.place, fmtCoords(s.lat, s.lng)].filter(Boolean).join(', '),
@@ -205,35 +211,22 @@ async function openWav() {
     const t = s.tech || {};
     const src = (t.codec || '').toUpperCase();
     const est = s.duration && t.sampleRate && t.channels ? s.duration * t.sampleRate * t.channels * 3 : 0;
-    wEl('w-info').textContent = (src === 'WAV'
-      ? 'The original is already a WAV. The audio is passed through unchanged; the name and description are written into the file.'
-      : `The original is ${src || 'compressed audio'}. It is converted to a 24-bit WAV${est ? ` (about ${fmtBytes(est)})` : ''}; the name and description are written into the file.`)
+    wEl('w-info').textContent = (W.fx
+      ? `Exported as a 24-bit WAV${est ? ` (about ${fmtBytes(est)})` : ''}, with the sound shaping applied; the name and description are written into the file.`
+      : src === 'WAV'
+        ? 'The original is already a WAV. The audio is passed through unchanged; the name and description are written into the file.'
+        : `The original is ${src || 'compressed audio'}. It is converted to a 24-bit WAV${est ? ` (about ${fmtBytes(est)})` : ''}; the name and description are written into the file.`)
       + (s.tech && s.tech.audioBytes > MAX_BYTES ? ' This recording is very large for a phone or browser.' : '');
+    wEl('w-fx').textContent = W.fx ? `Processing: ${W.fx}. Level matching is for listening only and is not applied.` : 'No sound shaping: the file is exported as it is.';
+    wEl('w-fx').hidden = false;
     setMsg(''); setProg(null); setGo('Prepare WAV', !!(s.tech && s.tech.audioBytes > MAX_BYTES));
     if (s.tech && s.tech.audioBytes > MAX_BYTES) setMsg('Too large to prepare here. Share the link instead.', true);
     dlg.showModal();
   } catch (e) { toast(e.message, 5000); }
-  finally { wavBtn.disabled = false; }
+  finally { if (opener) opener.disabled = false; }
 }
-if (wavBtn) wavBtn.addEventListener('click', openWav);
-
-async function fetchAudio(url, expected) {
-  const r = await fetch(url);
-  if (!r.ok) throw new Error('The recording could not be downloaded.');
-  const total = Number(r.headers.get('Content-Length')) || expected || 0;
-  if (!r.body || !total) return r.arrayBuffer();
-  const rd = r.body.getReader(), parts = []; let got = 0;
-  for (;;) {
-    const { done, value } = await rd.read(); if (done) break;
-    parts.push(value); got += value.length; setProg(got / total * 0.7);
-  }
-  return new Blob(parts).arrayBuffer();
-}
-async function decode(ab, rate) {
-  const AC = window.AudioContext || window.webkitAudioContext;
-  let ctx; try { ctx = new AC({ sampleRate: rate || undefined }); } catch { ctx = new AC(); }
-  try { return await ctx.decodeAudioData(ab); } finally { ctx.close().catch(() => {}); }
-}
+let this_button = null;
+for (const b of [dlBtn, wavBtn]) if (b) b.addEventListener('click', () => { this_button = b; openWav(); });
 
 /** Download the original, write the WAV (with name and description inside). Needs no tap to share yet. */
 async function prepare() {
@@ -241,21 +234,22 @@ async function prepare() {
   W.busy = true; setGo('Preparing…', true); wEl('w-save').disabled = true;
   try {
     setMsg('Downloading…'); setProg(0);
-    if (!W.raw) W.raw = await fetchAudio(mediaUrl(s.audio), s.tech && s.tech.audioBytes);
-    setProg(0.75); setMsg(isWav(W.raw) ? 'Writing name and description…' : 'Converting to WAV…');
+    if (!W.raw) W.raw = await fetchAudio(mediaUrl(s.audio), s.tech && s.tech.audioBytes, f => setProg(f * 0.4));
+    setProg(0.4);
+    const shaped = !!W.fx;
+    setMsg(shaped ? 'Rendering the sound shaping…' : isWav(W.raw) ? 'Writing name and description…' : 'Converting to WAV…');
     await new Promise(r => setTimeout(r, 30));   // let the page paint
-    const meta = { title: name, description: desc, credit: s.credit, recordedAt: s.recordedAt, reference: accession(s.no).replace(/\s+/g, '-') };
-    let blob = isWav(W.raw) ? rewriteWav(W.raw, meta) : null;
+    const meta = { title: name, description: shaped ? `${desc}${desc ? '\n\n' : ''}Processing: ${W.fx}` : desc, credit: s.credit, recordedAt: s.recordedAt, reference: accession(s.no).replace(/\s+/g, '-') };
+    let blob = !shaped && isWav(W.raw) ? rewriteWav(W.raw, meta) : null;
     if (!blob) {
-      const buf = await decode(W.raw.slice(0), s.tech && s.tech.sampleRate);
-      const chs = Array.from({ length: Math.min(buf.numberOfChannels, 8) }, (_, c) => buf.getChannelData(c));
-      blob = wavFromChannels(chs, buf.sampleRate, meta);
+      const { chs, rate } = await shapedChannels(W.raw.slice(0), s, f => { setProg(0.4 + f * 0.55); });
+      blob = wavFromChannels(chs, rate, meta);
     }
     W.file = new File([blob], name + '.wav', { type: 'audio/wav' });
     W.stamp = stampNow(); setProg(1);
     const canShare = !!(navigator.canShare && navigator.canShare({ files: [W.file] }));
     setMsg(`Ready: ${W.file.name} (${fmtBytes(W.file.size)}).`);
-    setGo(canShare ? 'Share…' : 'Download WAV');
+    setGo(canShare ? 'Share…' : 'Save WAV');
   } catch (e) {
     console.warn('share wav', e);
     setMsg(e && e.name === 'EncodingError' || /decode/i.test(String(e && e.message))
@@ -279,7 +273,7 @@ wEl('w-go').addEventListener('click', async () => {
     dlg.close();
   } catch (e) {
     if (e && e.name === 'AbortError') return;
-    setMsg('The share sheet could not take the file. It can be saved instead.', true); setGo('Download WAV');
+    setMsg('The share sheet could not take the file. It can be saved instead.', true); setGo('Save WAV');
   }
 });
 wEl('w-save').addEventListener('click', async () => {

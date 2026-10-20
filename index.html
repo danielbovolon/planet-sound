@@ -21,6 +21,8 @@
 <link rel="stylesheet" href="vendor/maplibre/maplibre-gl.css">
 <link rel="stylesheet" href="assets/css/app.css">
 <link rel="stylesheet" href="assets/css/glass.css">
+<link rel="stylesheet" href="assets/css/recorder.css">
+<link rel="stylesheet" href="assets/css/fx.css">
 <script src="config.js"></script>
 </head>
 <body>
@@ -160,9 +162,26 @@
 
     <dl class="facts" id="c-facts"></dl>
 
+    <details class="shape" id="shape" hidden>
+      <summary><span>Sound shaping</span><span class="shape-state" id="shape-state">Off</span></summary>
+      <div class="rack" id="rack">
+        <div class="rack-tabs" role="tablist" aria-label="Effect">
+          <button type="button" class="rack-tab" role="tab" id="tab-tape" aria-selected="true" aria-controls="rk-tape"><i class="lamp" id="lamp-tape"></i>Tape</button>
+          <button type="button" class="rack-tab" role="tab" id="tab-mb" aria-selected="false" aria-controls="rk-mb"><i class="lamp" id="lamp-mb"></i>Multiband</button>
+        </div>
+        <section id="rk-tape" role="tabpanel" aria-labelledby="tab-tape"></section>
+        <section id="rk-mb" role="tabpanel" aria-labelledby="tab-mb" hidden></section>
+        <p class="rack-note" id="rack-note" role="status"></p>
+        <div class="rack-foot">
+          <label class="check"><input type="checkbox" id="rk-safe" checked> Safe peaks</label>
+          <button type="button" class="btn quiet" id="rk-reset">Reset all</button>
+        </div>
+      </div>
+    </details>
+
     <div class="c-actions">
-      <a class="btn" id="c-dl" hidden>Download</a>
-      <button type="button" class="btn" id="c-specdl" hidden>Download spectrogram</button>
+      <button type="button" class="btn" id="c-dl" hidden>Export WAV</button>
+      <button type="button" class="btn" id="c-specdl" hidden>Export spectrogram</button>
     </div>
     <div class="c-actions">
       <button type="button" class="btn" id="c-share">Share sound</button>
@@ -203,6 +222,12 @@
     <div class="meters" aria-hidden="true">
       <canvas id="s-meter"></canvas>
       <button type="button" class="clip" id="s-clip" title="Clipped. Tap to reset.">Clip</button>
+    </div>
+    <div class="fx" id="s-fx">
+      <div class="fx-knobs">
+        <div id="k-gain"></div>
+      </div>
+      <p class="fx-note" id="s-fx-note">Set the level before you record. The meters show what is recorded. Double-click the knob to reset it.</p>
     </div>
     <div class="deck">
       <p class="clock" id="s-clock">00:00<small>.0</small></p>

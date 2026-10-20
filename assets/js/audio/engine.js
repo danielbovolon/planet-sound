@@ -50,19 +50,43 @@ export async function openInput(deviceId) {
 export class Recorder {
   /**
    * @param {MediaStream} stream
-   * @param {{channels:number, sampleRate?:number|null, onMeter?:Function, onProgress?:Function}} o
+   * @param {{channels:number, sampleRate?:number|null, onMeter?:Function, onProgress?:Function,
+   *          gainDb?:number}} o   gainDb: input gain in dB.
+   *   The chain is  microphone → gain → analog-style soft peaks → capture, so the file holds what the meters show.
    */
   constructor(stream, o) {
     this.stream = stream; this.o = o;
     this.channels = o.channels || 1;
     this.state = 'idle';
+    this.gainDb = clampGain(o.gainDb);
+    this.satOk = false;               // set by arm(): false where the soft-peak stage can't load (gain is then a plain gain)
+  }
+  /** Input gain in dB. Smooth (no clicks), works before and during a take. */
+  setGain(db) {
+    this.gainDb = clampGain(db);
+    if (!this.gain) return;
+    const t = this.ctx.currentTime;
+    this.gain.gain.cancelScheduledValues(t);
+    this.gain.gain.setTargetAtTime(Math.pow(10, this.gainDb / 20), t, 0.012);
+    if (this.sat) this.sat.parameters.get('drive').value = this.gainDb > 0.05 ? 1 : 0;
+  }
+  /** A one-line description of the processing, for the file's metadata. Empty if there was none. */
+  processingNote() {
+    const parts = [];
+    if (Math.abs(this.gainDb) >= 0.05) parts.push(`gain ${this.gainDb > 0 ? '+' : ''}${this.gainDb.toFixed(1)} dB${this.satOk && this.gainDb > 0.05 ? ' (analog soft peaks)' : ''}`);
+    return parts.join('; ');
   }
   async arm() {
     const AC = window.AudioContext || window.webkitAudioContext;
     try { this.ctx = o_rate(this.o.sampleRate) ? new AC({ sampleRate: this.o.sampleRate, latencyHint: 'interactive' }) : new AC(); }
     catch { this.ctx = new AC(); }
     await this.ctx.audioWorklet.addModule(new URL('./capture-worklet.js', here));
+    // The soft-peak stage is optional: if this browser can't load it, recording carries on with a plain gain.
+    try { await this.ctx.audioWorklet.addModule(new URL('./sat-worklet.js', here)); this.satOk = true; }
+    catch (e) { console.warn('Analog stage unavailable', e); this.satOk = false; }
     this.src = this.ctx.createMediaStreamSource(this.stream);
+    this.gain = this.ctx.createGain();
+    this.gain.gain.value = Math.pow(10, this.gainDb / 20);
     this.node = new AudioWorkletNode(this.ctx, 'ps-capture', {
       numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [1],
       channelCount: this.channels, channelCountMode: 'explicit', channelInterpretation: 'discrete',
@@ -70,7 +94,17 @@ export class Recorder {
     });
     this.node.port.onmessage = e => { if (e.data.meter && this.o.onMeter) this.o.onMeter(e.data.meter); };
     const mute = this.ctx.createGain(); mute.gain.value = 0;
-    this.src.connect(this.node); this.node.connect(mute); mute.connect(this.ctx.destination);
+    this.src.connect(this.gain);
+    let tail = this.gain;
+    if (this.satOk) {
+      this.sat = new AudioWorkletNode(this.ctx, 'ps-sat', {
+        numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [this.channels],
+        channelCount: this.channels, channelCountMode: 'explicit', channelInterpretation: 'discrete',
+      });
+      this.sat.parameters.get('drive').value = this.gainDb > 0.05 ? 1 : 0;
+      this.gain.connect(this.sat); tail = this.sat;
+    }
+    tail.connect(this.node); this.node.connect(mute); mute.connect(this.ctx.destination);
     // Don't await: iPhone Safari may never resolve a resume() outside a tap. record() resumes it inside the tap.
     if (this.ctx.state === 'suspended') this.ctx.resume().catch(() => {});
     this.sampleRate = this.ctx.sampleRate;
@@ -104,7 +138,8 @@ export class Recorder {
     this.state = 'armed';
     return packResult({
       master: blob, mime: 'audio/wav', ext: 'wav',
-      tech: { codec: 'WAV', lossless: true, sampleRate: this.sampleRate, bitDepth: 24, channels: this.channels, source: 'recorded' },
+      tech: { codec: 'WAV', lossless: true, sampleRate: this.sampleRate, bitDepth: 24, channels: this.channels, source: 'recorded',
+        gainDb: this.gainDb, processing: this.processingNote() },
       analysis, recordedAt: this.startedAt,
     });
   }
@@ -117,6 +152,8 @@ export class Recorder {
   }
 }
 function o_rate(r) { return typeof r === 'number' && r >= 8000 && r <= 192000; }
+export const GAIN_MIN_DB = -24, GAIN_MAX_DB = 36;
+function clampGain(v) { v = Number(v); return Number.isFinite(v) ? Math.max(GAIN_MIN_DB, Math.min(GAIN_MAX_DB, v)) : 0; }
 
 /* ---------------- import ---------------- */
 
@@ -280,7 +317,8 @@ export async function addBext(blob, m) {
   const pad2 = n => String(n).padStart(2, '0');
   const date = `${when.getFullYear()}-${pad2(when.getMonth() + 1)}-${pad2(when.getDate())}`;
   const time = `${pad2(when.getHours())}:${pad2(when.getMinutes())}:${pad2(when.getSeconds())}`;
-  const history = enc.encode(`A=PCM,M=${m.channels === 1 ? 'mono' : 'stereo'},O=Planet Sound`);
+  const note = m.processing ? ',T=' + String(m.processing).replace(/[^\x20-\x7e]/g, '').replace(/,/g, ';') : '';   // what was done to the signal while recording
+  const history = enc.encode(`A=PCM,M=${m.channels === 1 ? 'mono' : 'stereo'},O=Planet Sound${note}`);
   const body = 602 + history.length + (history.length & 1);
   const bext = new Uint8Array(8 + body), bdv = new DataView(bext.buffer);
   bext.set(enc.encode('bext'), 0); bdv.setUint32(4, body, true);

@@ -1,7 +1,12 @@
 /* Playback. The file is streamed untouched; a gain stage brings each entry to
  * a common loudness (−20 LUFS, never pushing peaks above −1 dBFS) so moving
  * between a forest and a market doesn't throw the listener. A two-channel
- * peak meter reads the signal after that gain. */
+ * peak meter reads the signal after that gain.
+ *
+ * Sound shaping (Tape, Multiband, speed): when the listener turns any of it on, the recording is decoded
+ * once and played through the effects (fx.js) instead of through the audio element, from the same
+ * position. Nothing changes for anyone who doesn't touch it. */
+import { FxPlayback } from './fx.js';
 
 const TARGET = -20, CEILING = -1;
 
@@ -19,14 +24,16 @@ export class Player {
     this.a.preload = 'metadata';
     this.levelMatch = true; this.sound = null; this.ctx = null; this.raf = 0;
     this.hold = [-90, -90]; this.holdT = [0, 0]; this.level = [-90, -90];
-    this.a.addEventListener('timeupdate', () => this._time());
-    this.a.addEventListener('durationchange', () => this._time());
-    this.a.addEventListener('play', () => { this.onState('playing'); this._loop(); });
-    this.a.addEventListener('pause', () => { this.onState('paused'); });
-    this.a.addEventListener('ended', () => { this.onState('ended'); });
-    this.a.addEventListener('waiting', () => this.onState('loading'));
-    this.a.addEventListener('playing', () => this.onState('playing'));
-    this.a.addEventListener('error', () => { if (this.sound) this.onState('error', this.a.error); });
+    this.fxp = null; this.fxMode = false; this.fxReady = false; this.fxPrep = null; this.fxError = '';
+    this.rawBlob = null; this.srcUrl = '';
+    this.a.addEventListener('timeupdate', () => { if (!this.fxMode) this._time(); });
+    this.a.addEventListener('durationchange', () => { if (!this.fxMode) this._time(); });
+    this.a.addEventListener('play', () => { if (this.fxMode) return; this.onState('playing'); this._loop(); });
+    this.a.addEventListener('pause', () => { if (this.fxMode) return; this.onState('paused'); });
+    this.a.addEventListener('ended', () => { if (this.fxMode) return; this.onState('ended'); });
+    this.a.addEventListener('waiting', () => { if (!this.fxMode) this.onState('loading'); });
+    this.a.addEventListener('playing', () => { if (!this.fxMode) this.onState('playing'); });
+    this.a.addEventListener('error', () => { if (this.sound && !this.fxMode) this.onState('error', this.a.error); });
   }
   _graph() {
     if (this.ctx || this.phone) return;
@@ -41,6 +48,7 @@ export class Player {
       this.src.connect(this.gain); this.gain.connect(this.ctx.destination);
       this.gain.connect(this.split); this.split.connect(this.an[0], 0); this.split.connect(this.an[1], 1);
       this.buf = new Float32Array(1024);
+      this.elAn = this.an;
       this._applyGain();
     } catch (e) { console.warn('Web Audio unavailable; playing without level matching', e); this.ctx = null; }
   }
@@ -53,12 +61,14 @@ export class Player {
   _applyGain() {
     if (this.gain) this.gain.gain.setTargetAtTime(10 ** (this.gainDb() / 20), this.ctx.currentTime, 0.05);
     else if (this.phone) this.a.volume = Math.max(0, Math.min(1, 10 ** (this.gainDb() / 20)));
+    if (this.fxp && this.fxp.ready) this.fxp.setLevelDb(this.gainDb());
   }
   setLevelMatch(on) { this.levelMatch = on; this._applyGain(); }
   load(sound, url) {
     this.stop();
     this.sound = sound;
     this.seq = (this.seq || 0) + 1;
+    this.srcUrl = url || ''; this.rawBlob = null;
     this.a.src = url || '';
     // Every browser: play a downloaded copy (same-origin blob) once it's ready. The streamed link
     // gave decode errors (code 3) on Brave and iPhone, while the downloaded file plays correctly.
@@ -78,11 +88,13 @@ export class Player {
   _prefetch(url, seq) {
     const q = () => this.seq === seq;
     fetch(url, { cache: 'no-store' }).then(r => (r.ok ? r.blob() : null)).then(async b => {
+      if (b && q()) this.rawBlob = b;                 // kept for sound shaping, which decodes the original
       if (!b || !q() || !this.a.paused) return;
       if (this.needWav && !/\.wav$/i.test(url)) { try { b = await this._toWav(b); } catch (e) { console.warn('WAV copy failed', e); } }
       if (!q() || !this.a.paused) return;
       if (this.blobUrl) URL.revokeObjectURL(this.blobUrl);
       this.blobUrl = URL.createObjectURL(b);
+      if (this.fxMode) return;
       this.a.src = this.blobUrl; this.a.load();
     }).catch(() => {});
   }
@@ -98,6 +110,11 @@ export class Player {
   }
   async toggle() {
     if (!this.sound || !this.a.src) return;
+    if (this.fxMode) {
+      if (this.fxp.playing) { this.fxp.pause(); this.onState('paused'); }
+      else { this.fxp.play(); this.onState('playing'); this._loop(); }
+      return;
+    }
     if (!this.a.paused) { this.a.pause(); return; }
     this._graph();
     // iOS/Safari only starts audio inside the tap itself: resume and play synchronously, never await first.
@@ -105,21 +122,86 @@ export class Player {
     const p = this.a.play();
     if (p && p.catch) p.catch(e => { if (e && e.name !== 'AbortError') this.onState('error', e); });
   }
-  stop() { try { this.a.pause(); } catch {} cancelAnimationFrame(this.raf); }
+  stop() { this.fxDrop(); try { this.a.pause(); } catch {} cancelAnimationFrame(this.raf); }
   seek(frac) {
     const d = this.duration();
-    if (d) { this.a.currentTime = Math.max(0, Math.min(d - 0.01, frac * d)); this._time(); }
+    if (!d) return;
+    if (this.fxMode) { this.fxp.seek(Math.max(0, Math.min(d - 0.01, frac * d))); this._time(); return; }
+    this.a.currentTime = Math.max(0, Math.min(d - 0.01, frac * d)); this._time();
   }
-  duration() { return isFinite(this.a.duration) && this.a.duration > 0 ? this.a.duration : (this.sound && this.sound.duration) || 0; }
-  _time() { this.onTime(this.a.currentTime || 0, this.duration()); }
+  duration() {
+    if (this.fxMode) return this.fxp.duration;
+    return isFinite(this.a.duration) && this.a.duration > 0 ? this.a.duration : (this.sound && this.sound.duration) || 0;
+  }
+  _time() {
+    if (this.fxMode) { const sp = this.fxp.rate || 1; this.onTime(this.fxp.position() / sp, this.fxp.duration / sp); return; }
+    this.onTime(this.a.currentTime || 0, this.duration());
+  }
   _loop() {
     cancelAnimationFrame(this.raf);
     const step = () => {
       this._time(); this._drawMeter();
-      if (!this.a.paused) this.raf = requestAnimationFrame(step);
+      const playing = this.fxMode ? this.fxp.playing : !this.a.paused;
+      if (playing) this.raf = requestAnimationFrame(step);
       else this._drawMeter(true);
     };
     this.raf = requestAnimationFrame(step);
+  }
+
+  /* ---------------- sound shaping ---------------- */
+  /** Call inside a tap or click. Starts the audio engine and decodes the recording in the background.
+   *  Resolves true when the effects can be heard live, false when this browser can't. */
+  fxPrepare() {
+    if (!this.sound || !this.srcUrl) return Promise.resolve(false);
+    if (this.fxPrep) return this.fxPrep;
+    this.fxError = '';
+    if (!(window.AudioContext || window.webkitAudioContext) || !window.AudioWorkletNode) { this.fxError = 'Live preview needs a newer browser. Export still works.'; return (this.fxPrep = Promise.resolve(false)); }
+    const seq = this.seq, fxp = new FxPlayback({ onEnded: () => { if (this.fxMode) this.onState('ended'); } });
+    this.fxp = fxp;
+    const opened = fxp.open();                       // the audio context is created here, inside the tap
+    this.fxPrep = (async () => {
+      await opened;
+      let blob = this.rawBlob;
+      if (!blob) { const r = await fetch(this.srcUrl, { cache: 'no-store' }); if (!r.ok) throw new Error('download'); blob = await r.blob(); if (seq === this.seq) this.rawBlob = blob; }
+      if (seq !== this.seq || this.fxp !== fxp) return false;
+      if (this.sound && this.sound.tech && this.sound.tech.audioBytes > 400 * 1024 * 1024) throw new Error('too large');
+      await fxp.decode(await blob.arrayBuffer());
+      if (seq !== this.seq || this.fxp !== fxp) return false;
+      fxp.setLevelDb(this.gainDb());
+      this.fxReady = true;
+      return true;
+    })().catch(e => {
+      console.warn('sound shaping unavailable', e);
+      if (this.fxp === fxp) { this.fxError = /too large/.test(e && e.message) ? 'This recording is too large to preview live. Export still works.' : 'Live preview isn’t available here. Export still works.'; this.fxDrop(); }
+      return false;
+    });
+    return this.fxPrep;
+  }
+  /** Route playback through the effects (from the same position) and give them these settings. */
+  fxUse(params) {
+    if (!this.fxReady || !this.fxp) return false;
+    this.fxp.setParams(params);
+    if (!this.fxMode) {
+      this.fxMode = true;
+      const was = !this.a.paused, pos = this.a.currentTime || 0;
+      try { this.a.pause(); } catch {}
+      this.an = this.fxp.an; if (!this.buf) this.buf = new Float32Array(1024);
+      this.fxp.seek(pos);
+      if (was) this.fxp.play();
+      this._applyGain();
+      this.onState(this.fxp.playing ? 'playing' : 'paused');
+      if (this.fxp.playing) this._loop();
+    }
+    this._time();
+    return true;
+  }
+  /** Free the effects engine (a new sound, or the panel closed). */
+  fxDrop() {
+    const fxp = this.fxp, was = this.fxMode;
+    this.fxMode = false; this.fxReady = false; this.fxPrep = null; this.fxp = null;
+    this.an = this.elAn;                             // the element's own meter taps (none until it has played)
+    if (fxp) fxp.destroy();
+    if (was) { cancelAnimationFrame(this.raf); this.onState('paused'); }
   }
   _drawMeter(reset) {
     const cv = this.meterCv; if (!cv) return;

@@ -1,0 +1,37 @@
+/* Planet Sound — knobs (shared) and the recorder's Gain. Loaded after glass.css.
+   The knob is a fluted ivory bakelite knob on a chrome skirt, with a printed scale that lights up as it turns:
+   an object on the glass, so it looks the same in light and dark. */
+
+:root { --k-lit: #E2682E; --k-tick: rgba(64, 70, 80, .55); --k-flute: rgba(80, 60, 20, .35); --k-shadow: rgba(20, 24, 32, .34); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --k-lit: #FF8F52; --k-tick: rgba(220, 227, 234, .42); --k-shadow: rgba(0, 0, 0, .6); } }
+:root[data-theme="dark"] { --k-lit: #FF8F52; --k-tick: rgba(220, 227, 234, .42); --k-shadow: rgba(0, 0, 0, .6); }
+
+.knob-box { display: grid; justify-items: center; gap: 2px; width: 92px; --ks: 70px; }
+.knob-box.sm { width: 70px; --ks: 54px; gap: 1px; }
+.knob-box.is-off { opacity: .45; }
+.knob {
+  width: var(--ks); height: var(--ks); border-radius: 50%; position: relative; touch-action: none; cursor: ns-resize;
+  -webkit-tap-highlight-color: transparent; user-select: none; -webkit-user-select: none;
+}
+.knob svg { width: 100%; height: 100%; display: block; overflow: visible; }
+.knob:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
+.knob[aria-disabled="true"] { cursor: default; }
+.k-tick { stroke: var(--k-tick); stroke-width: 1.1; stroke-linecap: round; }
+.k-tick.major { stroke-width: 1.9; }
+.k-tick.lit { stroke: var(--k-lit); }
+.k-def { stroke: var(--k-tick); stroke-width: 1.4; stroke-linecap: round; opacity: .9; }
+.k-shadow { fill: var(--k-shadow); }
+.k-flutes { stroke: var(--k-flute); stroke-width: 1.15; stroke-linecap: round; fill: none; }
+.k-cap-ring { stroke: rgba(120, 96, 50, .35); stroke-width: .9; }
+.knob.is-drag .k-cap-ring { stroke: var(--k-lit); stroke-width: 1.4; }
+.knob-name { font: 700 10.5px/1.2 var(--sans); letter-spacing: .13em; text-transform: uppercase; color: var(--graphite); white-space: nowrap; }
+.knob-val { font: 600 12.5px/1.25 var(--sans); font-variant-numeric: tabular-nums; color: var(--ink); min-height: 1.25em; white-space: nowrap; }
+
+/* the recorder's Gain */
+.fx { margin-top: 14px; padding: 12px 0 2px; border-top: 1px solid var(--glass-line, var(--rule)); }
+.fx[hidden] { display: none; }
+.fx-knobs { display: flex; justify-content: center; align-items: flex-start; gap: clamp(28px, 10vw, 64px); }
+.fx-knobs .knob-box { --ks: 78px; width: 110px; }
+.fx-note { margin: 10px 0 0; text-align: center; color: var(--graphite); font-size: 12.5px; line-height: 1.4; }
+.fx-note.err { color: var(--signal); }
+@media (max-width: 860px) { .knob-box { --ks: 64px; width: 84px; } .knob-box.sm { --ks: 52px; width: 66px; } .fx-knobs .knob-box { --ks: 72px; } }

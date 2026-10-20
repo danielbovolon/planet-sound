@@ -1,11 +1,17 @@
 /* The recorder and the publishing steps. */
 import { $, $$, fmtBytes, fmtDb, fmtFormat, fmtTime, toast, ask, tagButtons, toLocalInput, fromLocalInput, placeName, fmtCoords } from './ui.js';
-import { supportsRecording, listInputs, openInput, Recorder, importFile, retagFlac, addBext } from './audio/engine.js';
+import { supportsRecording, listInputs, openInput, Recorder, importFile, retagFlac, addBext, GAIN_MIN_DB, GAIN_MAX_DB } from './audio/engine.js';
 import { ensureIdentity, upload, call, identity } from './api.js';
 import { outbox, prefs } from './store.js';
 import { drawWave } from './player.js';
+import { createKnob } from './knobs.js';
 
 const MAX_SECONDS = 60 * 60;    // one hour per take
+// Input gain for the take about to be made. Every time the recorder is opened it starts at 0 dB
+// (a forgotten +30 dB must never surprise the next recording); "Record again" keeps it.
+const fx = { gainDb: 0 };
+let knobs = null;
+const FX_NOTE = 'Set the level before you record. The meters show what is recorded. Double-click the knob to reset it.';
 let deps = null;
 let rec = null, inputInfo = null, take = null, state = 'off';
 let history = [], clipOn = false, holdDb = [-90, -90], holdT = [0, 0], lastMeter = null, raf = 0;
@@ -34,11 +40,20 @@ export function initStudio(d) {
   el('d-photo-in').addEventListener('change', e => readPhoto(e.target.files[0]));
   el('d-photo-clear').addEventListener('click', () => { photo = null; showPhoto(); });
   el('u-go').addEventListener('click', publish);
+  knobs = {
+    gain: createKnob(el('k-gain'), {
+      label: 'Gain', min: GAIN_MIN_DB, max: GAIN_MAX_DB, step: 0.5, value: 0, def: 0, origin: 0,
+      format: v => `${v > 0 ? '+' : v < 0 ? '−' : ''}${Math.abs(v).toFixed(1)} dB`, speech: v => `${v.toFixed(1)} decibels`,
+      hint: 'Input gain, set before you record. Boosted peaks are rounded off like an analog preamp instead of clipping. Drag up or down; double-click to reset.',
+      onInput: v => { fx.gainDb = v; if (rec) rec.setGain(v); },
+    }),
+  };
   addEventListener('resize', () => { if (state === 'review') drawReview(); });
   addEventListener('keydown', e => {
     if (el('studio').hidden) return;
     if (e.key === 'Escape') { closeStudio(); }
-    if (e.code === 'Space' && currentStep() === 'take' && !/INPUT|TEXTAREA|SELECT|BUTTON/.test(document.activeElement.tagName)) { e.preventDefault(); onRecButton(); }
+    const onControl = /INPUT|TEXTAREA|SELECT|BUTTON/.test(document.activeElement.tagName) || (document.activeElement.getAttribute && document.activeElement.getAttribute('role') === 'slider');
+    if (e.code === 'Space' && currentStep() === 'take' && !onControl) { e.preventDefault(); onRecButton(); }
   });
 }
 
@@ -60,9 +75,10 @@ function go(step) {
     const f = el('d-title'); if (!f.value) setTimeout(() => f.focus(), 50);
   }
   if (step === 'publish') {
-    const has = !!identity.key;
-    el('u-key-note').textContent = has ? 'Published under your listener key. Only you can edit it.'
-      : 'Publishing creates a listener key on this device. It proves the recording is yours, so only you can edit it.';
+    const u = identity.user;
+    const signedIn = !!(identity.key && u && u.email);
+    el('u-key-note').textContent = signedIn ? `Published to your account (${u.email}). Only you can edit it.`
+      : 'You need to be signed in to publish. Sign in from Your archive; a finished recording waits on this device until you are.';
     el('u-credit').value = el('u-credit').value || (identity.user && identity.user.name) || prefs.get('credit', '');
     el('u-msg').textContent = ''; el('u-msg').classList.remove('err');
   }
@@ -89,6 +105,7 @@ async function closeStudio() {
 }
 function resetForm() {
   take = null; loc = null; tags.length = 0; photo = null;
+  fx.gainDb = 0; if (knobs) knobs.gain.set(0, false);
   if (specUrl) URL.revokeObjectURL(specUrl); if (audioUrl) URL.revokeObjectURL(audioUrl); specUrl = audioUrl = null;
   ['d-title', 'd-notes', 'p-lat', 'p-lng', 'p-place'].forEach(i => { el(i).value = ''; });
   el('d-title').placeholder = 'Courtyard, early morning';
@@ -111,10 +128,12 @@ async function arm(deviceId) {
   try {
     const { stream, info } = await openInput(deviceId || prefs.get('input', ''));
     inputInfo = info;
-    rec = new Recorder(stream, { channels: info.channels, sampleRate: info.sampleRate, onMeter: onMeter, onProgress: p => { bytes = p.bytes; } });
+    rec = new Recorder(stream, { channels: info.channels, sampleRate: info.sampleRate, onMeter: onMeter, onProgress: p => { bytes = p.bytes; }, gainDb: fx.gainDb });
     await rec.arm();
     state = 'armed';
     el('s-rec').disabled = false;
+    el('s-fx-note').textContent = rec.satOk ? FX_NOTE : 'Gain works as a plain gain in this browser (no analog soft peaks).';
+    el('s-fx-note').classList.toggle('err', !rec.satOk);
     el('s-info').textContent = `${(rec.sampleRate / 1000).toFixed(rec.sampleRate % 1000 ? 1 : 0)} kHz, 24-bit WAV, ${info.channels === 1 ? 'mono' : 'stereo'}` +
       (info.processingOff ? ', voice processing off' : ', the browser may be applying voice processing');
     if (deviceId) prefs.set('input', deviceId);
@@ -229,6 +248,7 @@ function setIdleUi() {
   el('s-review').hidden = true; el('s-spec').hidden = true; el('s-wave').hidden = false;
   el('s-size').textContent = ''; setClock(0);
   $('.alt').hidden = false; el('s-input').disabled = false;
+  el('s-fx').hidden = false;
 }
 
 /* ---------------- recording ---------------- */
@@ -288,10 +308,12 @@ async function adoptTake(r) {
   specUrl = r.spectrogram ? URL.createObjectURL(r.spectrogram) : null;
   el('s-rec').className = 'big-rec review'; el('s-rec').setAttribute('aria-label', 'Play'); el('s-rec').disabled = false;
   el('s-review').hidden = false; $('.alt').hidden = true;
+  el('s-fx').hidden = true;
   setClock(r.duration);
   const t = r.tech;
   el('s-size').textContent = `${fmtBytes(r.master.size)} ${t.codec}`;
   const facts = [fmtFormat(t)];
+  if (t.processing) facts.push(`recorded with ${t.processing}`);
   if (r.lufs != null) facts.push(`${fmtDb(r.lufs)} LUFS integrated`);
   if (r.peakDb != null) facts.push(`peak ${fmtDb(r.peakDb)} dBFS`);
   el('s-info').textContent = facts.join(', ');
@@ -436,7 +458,7 @@ async function publish() {
   };
   let master = take.master;
   if (take.mime === 'audio/wav' && take.tech.source === 'recorded') {
-    master = await addBext(master, { title: meta.title, place: meta.place, id: meta.id, recordedAt: meta.recordedAt, channels: take.tech.channels });
+    master = await addBext(master, { title: meta.title, place: meta.place, id: meta.id, recordedAt: meta.recordedAt, channels: take.tech.channels, processing: take.tech.processing });
   } else if (take.mime === 'audio/flac' && take.tech.source !== 'imported') {
     master = await retagFlac(master, {
       TITLE: meta.title, ARTIST: credit, DATE: meta.recordedAt, LOCATION: meta.place,
@@ -484,7 +506,7 @@ export async function sendEntry(entry, onFraction) {
   }
   const r = await call('/api/sounds', { method: 'POST', body: { ...m, audioKey: entry.keys.audio, spectrogramKey: entry.keys.spectrogram || null, photoKey: entry.keys.photo || null } });
   await outbox.remove(entry.id).catch(() => {});
-  // remember that this device (with this key) published it, so it always shows in Your archive
+  // remember that this device (signed in) published it, so it always shows in Your archive
   try {
     const k = identity.key, prev = prefs.get('mine', null);
     const ids = prev && prev.key === k ? (prev.ids || []) : [];

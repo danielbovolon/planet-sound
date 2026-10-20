@@ -8,6 +8,9 @@ import { createSky } from './sky.js';
 import { Player, drawWave } from './player.js';
 import { initStudio, sendEntry, openStudio, shrinkImage } from './studio.js';
 import { encodeWav24 } from './audio/engine.js';
+import { initFxUi } from './fxui.js';
+import { fxState } from './fx.js';
+import { shapedSpectrogramBlob } from './fxexport.js';
 
 const S = {
   sounds: [], byId: new Map(), full: new Map(), me: null,
@@ -98,7 +101,6 @@ async function load() {
   if (cached && !S.sounds.length) setSounds(cached.sounds || [], true);
   try {
     const d = await call('/api/sounds');
-    if (identity.key && !d.me) { /* key no longer valid */ }
     setSounds(d.sounds);
     try { prefs.set('cache', { at: Date.now(), sounds: d.sounds }); } catch {}
     return true;
@@ -176,6 +178,8 @@ $('#c-seek').addEventListener('input', e => { seeking = true; player.seek(e.targ
 $('#c-seek').addEventListener('change', () => { seeking = false; });
 $('#c-lm').checked = prefs.get('levelMatch', true);
 player.setLevelMatch($('#c-lm').checked);
+let fxui = { setSound() {}, shaped: () => false };
+initFxUi({ player, toast }).then(u => { fxui = u; const s = S.current && (S.full.get(S.current) || S.byId.get(S.current)); if (s) fxui.setSound(s); });
 $('#c-lm').addEventListener('change', e => { player.setLevelMatch(e.target.checked); prefs.set('levelMatch', e.target.checked); });
 $('#c-close').addEventListener('click', closeCard);
 
@@ -234,13 +238,9 @@ function fillCard(s, partial) {
   }
   $('#c-play').disabled = !s.audio;
   const dl = $('#c-dl');
-  if (s.audio && (s.allowDownload || s.mine)) {
-    const ext = (s.audio.split('.').pop() || 'flac').toLowerCase();
-    dl.href = mediaUrl(s.audio) + '?download=' + encodeURIComponent(`${accession(s.no).replace(' ', '-')} ${s.title}.${ext}`);
-    dl.textContent = `Download ${s.tech && s.tech.codec ? s.tech.codec : ext.toUpperCase()}${s.tech && s.tech.audioBytes ? ` (${fmtBytes(s.tech.audioBytes)})` : ''}`;
-    dl.hidden = false;
-  } else dl.hidden = true;
+  dl.hidden = !(s.audio && (s.allowDownload || s.mine));     // Export WAV: the dialog is in share.js
   $('#c-specdl').hidden = !s.spectrogram;
+  fxui.setSound(s);
   $('#c-owner').hidden = !s.mine;
 }
 function factsHtml(s) {
@@ -338,6 +338,20 @@ function specColour() {
 }
 $('#c-specdl').addEventListener('click', async () => {
   const s = S.full.get(S.current); if (!s || !s.spectrogram) return;
+  const name = `${accession(s.no).replace(' ', '-')} ${s.title} spectrogram.png`;
+  const save = b => { const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000); };
+  // with Tape / Multiband / speed switched on, the picture is of the shaped sound, like the exported WAV
+  if (!fxState.neutral() && s.audio && (s.allowDownload || s.mine)) {
+    const btn = $('#c-specdl'), label = btn.textContent; btn.disabled = true;
+    try {
+      toast('Rendering the spectrogram of the shaped sound…', 4000);
+      btn.textContent = 'Rendering…';
+      const sheet = getComputedStyle(document.documentElement).getPropertyValue('--sheet').trim() || '#F7F7F4';
+      save(await shapedSpectrogramBlob(mediaUrl(s.audio), s, specColour(), sheet, f => { btn.textContent = `Rendering ${Math.round(f * 100)}%`; }));
+    } catch (e) { console.warn(e); toast('Could not render the spectrogram of the shaped sound.', 5000); }
+    finally { btn.disabled = false; btn.textContent = label; }
+    return;
+  }
   try {
     const r = await fetch(mediaUrl(s.spectrogram), { cache: 'no-store' });
     if (!r.ok) throw new Error('download failed');
@@ -350,11 +364,7 @@ $('#c-specdl').addEventListener('click', async () => {
     const oc = out.getContext('2d');
     oc.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--sheet').trim() || '#F7F7F4';
     oc.fillRect(0, 0, out.width, out.height); oc.drawImage(ink, 0, 0);
-    out.toBlob(b => {
-      const a = document.createElement('a'); a.href = URL.createObjectURL(b);
-      a.download = `${accession(s.no).replace(' ', '-')} ${s.title} spectrogram.png`; a.click();
-      setTimeout(() => URL.revokeObjectURL(a.href), 4000);
-    }, 'image/png');
+    out.toBlob(save, 'image/png');
   } catch (e) { toast('Could not download the spectrogram.'); }
 });
 $('#e-delete').addEventListener('click', async () => {
@@ -402,6 +412,17 @@ function saveCollections() {
   if (identity.key) call('/api/me/collections', { method: 'PUT', body: { collections: S.collections } }).catch(() => {});
   renderCollectionFilter();
 }
+/* Collections follow the account. On a device with none of its own, take the account's;
+   if the account has none yet, keep what this device has and send it up. */
+async function syncCollections() {
+  if (!identity.key) return;
+  try {
+    const d = await call('/api/me/collections');
+    const remote = d.collections || [];
+    if (remote.length && !S.collections.length) { S.collections = remote; prefs.set('collections', S.collections); renderCollectionFilter(); }
+    else if (!remote.length && S.collections.length) call('/api/me/collections', { method: 'PUT', body: { collections: S.collections } }).catch(() => {});
+  } catch {}
+}
 function renderCollectionFilter() {
   let sel = $('#coll-filter');
   if (!S.collections.length) { if (sel) sel.parentElement.remove(); S.collection = ''; return; }
@@ -435,7 +456,7 @@ async function collectDialog(id) {
 
 /* ---------------- your archive ---------------- */
 /* A recording belongs to you if the server says so, or if this device published it
-   with the key it holds now (covers queued recordings sent later, offline or in the background). */
+   while signed in (covers queued recordings sent later, offline or in the background). */
 function ownIds() {
   const m = prefs.get('mine', null);
   return m && identity.key && m.key === identity.key ? new Set(m.ids || []) : new Set();
@@ -448,7 +469,7 @@ async function openYou() {
   $('#you').showModal();
   if (identity.key) {
     try { await load(); const d = await call('/api/me'); identity.setUser(d.user); renderYou(); }
-    catch (e) { if (e.status === 401) renderYou('That listener key is no longer valid on the server.'); }
+    catch (e) { if (e.status === 401) { identity.clear(); renderYou('You have been signed out on this device. Sign in again to see your archive.'); } }
   }
 }
 async function renderYou(warning) {
@@ -456,7 +477,6 @@ async function renderYou(warning) {
   const mine = S.sounds.filter(isMine), priv = mine.filter(s => s.visibility === 'private');
   const pending = await outbox.all().catch(() => []);
   const u = identity.user;
-  const key = identity.key;
   const theme = prefs.get('theme', 'auto');
   const spec = prefs.get('specColour', 'ink');
   const flacs = mine.filter(s => s.tech && s.tech.codec === 'FLAC');
@@ -468,7 +488,7 @@ async function renderYou(warning) {
     <section class="you-sec">
       <div class="you-stats"><div><b>${mine.length}</b>recordings</div><div><b>${priv.length}</b>you</div><div><b>${S.collections.length}</b>collections</div></div>
     </section>
-    ${pending.length ? `<section class="you-sec"><h3>Waiting to upload</h3><p>${pending.length} recording${pending.length === 1 ? ' is' : 's are'} saved on this device and will be published when there is a connection.</p><button type="button" class="btn" id="y-retry">Try now</button></section>` : ''}
+    ${pending.length ? `<section class="you-sec"><h3>Waiting to upload</h3><p>${pending.length} recording${pending.length === 1 ? ' is' : 's are'} saved on this device and will be published when there is a connection${u && u.email ? '' : ' and you are signed in'}.</p><button type="button" class="btn" id="y-retry">Try now</button></section>` : ''}
     <section class="you-sec">
       <h3>Your recordings</h3>
       ${mine.length ? `<ul class="y-list">${rows}</ul>` : '<p>No recordings yet. Everything you publish, public or private, is listed here.</p>'}
@@ -476,14 +496,6 @@ async function renderYou(warning) {
     ${flacs.length ? `<section class="you-sec"><h3>Older recordings</h3><p>${flacs.length} recording${flacs.length === 1 ? ' is' : 's are'} stored as FLAC, which Safari and iPhone can’t always play. Converting makes a WAV copy of each one on the server. Do it on a computer with Brave or Chrome. The original FLAC is kept.</p><button type="button" class="btn" id="y-convert">Convert ${flacs.length} to WAV</button><p id="y-conv" class="you-note" aria-live="polite"></p></section>` : ''}
     <details class="you-more">
       <summary>Settings</summary>
-      <section class="you-sec">
-      <h3>Listener key</h3>
-      ${key ? `<p>This key proves your recordings are yours. Use it to open your archive on another device. Keep it private; it can’t be recovered if lost.</p>
-        <div class="keybox"><span id="y-key">${esc('PS-' + key.slice(3).replace(/[A-Z0-9]/g, '•'))}</span><button type="button" class="btn quiet" id="y-show">Show</button><button type="button" class="btn" id="y-copy">Copy</button></div>
-        <div class="row" style="margin-top:10px"><button type="button" class="btn" id="y-link">Copy a link for another device</button></div>`
-      : `<p>You don’t have a key yet. One is created on this device the first time you publish a recording.</p>`}
-      <div class="row" style="margin-top:10px"><input id="y-in" placeholder="PS-XXXXX-XXXXX-XXXXX-XXXXX" style="flex:1;min-height:38px;padding:0 10px;border-radius:8px;border:1px solid var(--rule);background:var(--paper);text-transform:uppercase" aria-label="Listener key"><button type="button" class="btn" id="y-use">Open this archive</button></div>
-    </section>
     <section class="you-sec">
       <h3>Credit</h3>
       <div class="row"><input id="y-name" value="${esc((u && u.name) || prefs.get('credit', ''))}" maxlength="80" placeholder="How recordings are credited" style="flex:1;min-height:38px;padding:0 10px;border-radius:8px;border:1px solid var(--rule);background:var(--paper)" aria-label="Credit name"><button type="button" class="btn" id="y-save-name">Save</button></div>
@@ -502,15 +514,10 @@ async function renderYou(warning) {
       <div class="seg" role="group" aria-label="Spectrogram colour">${[['ink', 'Blue'], ['signal', 'Red'], ['moss', 'Green']].map(([k, l]) => `<button type="button" data-spec-set="${k}" aria-pressed="${spec === k}">${l}</button>`).join('')}</div>
     </section>
     ${mine.length ? `<section class="you-sec"><h3>Export</h3><p>A catalogue of your recordings with links to every original file.</p><button type="button" class="btn" id="y-export">Download catalogue (JSON)</button></section>` : ''}
-    ${key ? `<section class="you-sec"><h3>This device</h3><p>Signing out removes the key from this device only. Without the key you can’t edit or delete your recordings.</p><div class="row"><button type="button" class="btn" id="y-rotate">Replace key</button><button type="button" class="btn danger" id="y-out">Sign out of this device</button></div></section>` : ''}    </details>`;
+    </details>`;
   const on = (id, fn) => { const x = body.querySelector(id); if (x) x.onclick = fn; };
   body.querySelectorAll('[data-open]').forEach(b => b.onclick = () => { $('#you').close(); openCard(b.dataset.open, { fly: true }); });
   on('#y-retry', async () => { $('#you').close(); await flushOutbox(true); });
-  let shown = false;
-  on('#y-show', () => { shown = !shown; body.querySelector('#y-key').textContent = shown ? key : 'PS-' + key.slice(3).replace(/[A-Z0-9]/g, '•'); body.querySelector('#y-show').textContent = shown ? 'Hide' : 'Show'; });
-  on('#y-copy', async () => { await navigator.clipboard.writeText(key).catch(() => {}); toast('Key copied'); });
-  on('#y-link', async () => { await navigator.clipboard.writeText(`${location.origin}${location.pathname}#key=${key}`).catch(() => {}); toast('Link copied. Open it on the other device.'); });
-  on('#y-use', () => useKey(body.querySelector('#y-in').value));
   on('#y-save-name', async () => {
     const name = body.querySelector('#y-name').value.trim(); prefs.set('credit', name);
     if (identity.key) { try { const d = await call('/api/me', { method: 'PATCH', body: { name } }); identity.setUser(d.user); } catch (e) { return toast(e.message); } }
@@ -532,7 +539,7 @@ async function renderYou(warning) {
     note.textContent = '';
     try {
       const d = await call('/api/auth/signin', { method: 'POST', body: { email, password, create }, auth: false });
-      identity.set(d.key, d.user); S.full.clear(); await load(); renderYou();
+      identity.set(d.key, d.user); S.full.clear(); await load(); await syncCollections(); renderYou();
       toast(`Signed in as ${d.user.email}`);
       flushOutbox(false);
     } catch (e) { note.textContent = e.message; }
@@ -557,16 +564,6 @@ async function renderYou(warning) {
     note.textContent = `${done} converted${failed ? `, ${failed} could not be converted. Try again on a computer with Brave or Chrome` : ''}.`;
     S.full.clear(); await load(); renderYou();
   });
-  on('#y-rotate', async () => {
-    if (!(await ask({ title: 'Replace your key?', body: 'A new key is issued and the old one stops working everywhere. Other devices will need the new key.', yes: 'Replace key' }))) return openYou();
-    try { const d = await call('/api/me/rotate', { method: 'POST' }); identity.set(d.key, identity.user); toast('New key issued'); openYou(); } catch (e) { toast(e.message); }
-  });
-  on('#y-out', async () => {
-    $('#you').close();
-    const ok = await ask({ title: 'Sign out of this device?', body: 'Make sure you have copied your key first. Without it you can’t edit your recordings.', yes: 'Sign out', danger: true });
-    if (!ok) return;
-    identity.clear(); prefs.set('mine', null); closeCard(); S.full.clear(); await load(); toast('Signed out of this device');
-  });
 }
 /* Make a WAV copy of an older FLAC recording and point the entry at it. */
 async function convertToWav(s, onProgress) {
@@ -581,23 +578,6 @@ async function convertToWav(s, onProgress) {
   const key = await upload(blob, 'wav', loaded => onProgress && onProgress(loaded / blob.size));
   await call('/api/sounds/' + s.id, { method: 'PATCH', body: { audioKey: key, codec: 'WAV', lossless: true, bitDepth: 24, sampleRate: buf.sampleRate, channels: Math.min(8, buf.numberOfChannels) } });
   S.full.delete(s.id);
-}
-async function useKey(raw) {
-  const key = String(raw || '').trim().toUpperCase().replace(/\s+/g, '');
-  if (!/^PS(-[A-Z0-9]{5}){4}$/.test(key)) return toast('That doesn’t look like a listener key (PS-XXXXX-XXXXX-XXXXX-XXXXX).');
-  const prev = identity.key, prevUser = identity.user;
-  identity.set(key, null);
-  try {
-    const d = await call('/api/me'); identity.setUser(d.user);
-    const c = await call('/api/me/collections').catch(() => null);
-    if (c && c.collections && c.collections.length) { S.collections = c.collections; prefs.set('collections', S.collections); renderCollectionFilter(); }
-    $('#you').open && $('#you').close();
-    S.full.clear(); await load();
-    toast(`Archive opened${d.user.name ? ': ' + d.user.name : ''}`);
-  } catch (e) {
-    if (prev) identity.set(prev, prevUser); else identity.clear();
-    toast(e.status === 401 ? 'That key isn’t recognised.' : e.message);
-  }
 }
 async function exportCatalogue() {
   const mine = S.sounds.filter(isMine);
@@ -651,6 +631,7 @@ initStudio({
 addEventListener('keydown', e => {
   if (!$('#studio').hidden || document.querySelector('dialog[open]')) return;
   if (/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) return;
+  { const ae = document.activeElement; if (e.key === ' ' && ae && ae.closest && ae.closest('#shape') && ae.getAttribute('role') !== 'slider') return; }
   if (e.key === 'Escape' && !card.hidden) closeCard();
   if (e.key === ' ' && !card.hidden) { e.preventDefault(); player.toggle(); }
   if (e.key === '/') { e.preventDefault(); $('#q').focus(); }
@@ -660,17 +641,12 @@ addEventListener('keydown', e => {
 /* ---------------- boot ---------------- */
 (async function boot() {
   if (!API || /REPLACE-ME/.test(API)) toast('Set apiBase in config.js to your Worker URL.', 8000);
-  const hashKey = location.hash.match(/key=(PS(?:-[A-Z0-9]{5}){4})/i);
-  if (hashKey) {
-    history.replaceState(null, '', location.pathname + location.search);
-    if (hashKey[1].toUpperCase() !== identity.key && await ask({ title: 'Open this archive here?', body: 'This link carries a listener key. Opening it lets this device edit and remove that archive’s recordings.', yes: 'Open archive' })) await useKey(hashKey[1]);
-  }
   renderCollectionFilter();
   await load();
   const p = new URLSearchParams(location.search);
   const target = p.get('no') || p.get('id');
   if (target) openCard(target, { fly: true });
-  if (identity.key) call('/api/me/collections').then(d => { if (d.collections && d.collections.length && !S.collections.length) { S.collections = d.collections; prefs.set('collections', S.collections); renderCollectionFilter(); } }).catch(() => {});
+  syncCollections();
   flushOutbox(false);
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
 })();
