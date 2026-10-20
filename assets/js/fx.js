@@ -34,13 +34,13 @@ const B = (a, b, c) => [a, b, c];
 const band = o => ({ on: true, solo: false, inDb: 0, outDb: 0, aThr: 0, aRat: 1, bThr: -90, bRat: 1, atk: 20, rel: 200, ...o });
 export const MB_PRESETS = [
   ['Flat (no change)', { bands: B(band({}), band({}), band({})) }],
-  ['OTT · classic', {
+  ['OTT', {
     lo: 100, hi: 2500, amount: 1, out: -1,
     bands: B(band({ aThr: -24, aRat: 4, bThr: -42, bRat: 2.5, atk: 22, rel: 180, outDb: 1 }),
              band({ aThr: -26, aRat: 4, bThr: -44, bRat: 3, atk: 6, rel: 90 }),
              band({ aThr: -28, aRat: 4, bThr: -46, bRat: 3.5, atk: 1.5, rel: 60, outDb: 1.5 })),
   }],
-  ['OTT · reference (screenshot)', {
+  ['Multiband compression', {
     lo: 98.3, hi: 1660, amount: 1, time: 1,
     bands: B(band({ inDb: 6, aThr: -21.8, aRat: 1.75, atk: 156, rel: 364 }),
              band({ inDb: 6, aThr: -23.2, aRat: 1.75, atk: 102, rel: 282 }),

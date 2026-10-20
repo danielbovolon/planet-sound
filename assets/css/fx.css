@@ -72,7 +72,9 @@
 .knobs.three { grid-template-columns: repeat(3, 1fr); }
 .knobs .knob-box { width: 100%; max-width: 92px; }
 
-.rack.off .knobs, .rack.off .band-body { opacity: .5; }
+.rack.off .knobs, .rack.off .band-tab .bt-gain { display: block; margin-top: 6px; border-top: 1px solid var(--glass-line, var(--rule)); padding-top: 6px; }
+.band-tab .bt-gain .knob-box { width: 100%; }
+.band-body { opacity: .5; }
 .rack-note { margin: 8px 2px 0; font-size: 12.5px; color: var(--graphite); line-height: 1.4; }
 .rack-note.err { color: var(--signal); }
 .rack-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin: 6px 2px 0; }

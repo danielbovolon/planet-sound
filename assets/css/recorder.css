@@ -1,8 +1,8 @@
 /* Planet Sound — knobs (shared) and the recorder's Gain. Loaded after glass.css.
-   The knob is a fluted ivory bakelite knob on a chrome skirt, with a printed scale that lights up as it turns:
+   The knob is a knurled black bakelite knob with a brushed-aluminium cap, with a printed scale that lights up as it turns:
    an object on the glass, so it looks the same in light and dark. */
 
-:root { --k-lit: #E2682E; --k-tick: rgba(64, 70, 80, .55); --k-flute: rgba(80, 60, 20, .35); --k-shadow: rgba(20, 24, 32, .34); }
+:root { --k-lit: #E2682E; --k-tick: rgba(64, 70, 80, .55); --k-flute: rgba(255, 244, 214, .30); --k-shadow: rgba(20, 24, 32, .34); }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --k-lit: #FF8F52; --k-tick: rgba(220, 227, 234, .42); --k-shadow: rgba(0, 0, 0, .6); } }
 :root[data-theme="dark"] { --k-lit: #FF8F52; --k-tick: rgba(220, 227, 234, .42); --k-shadow: rgba(0, 0, 0, .6); }
 
@@ -22,7 +22,9 @@
 .k-def { stroke: var(--k-tick); stroke-width: 1.4; stroke-linecap: round; opacity: .9; }
 .k-shadow { fill: var(--k-shadow); }
 .k-flutes { stroke: var(--k-flute); stroke-width: 1.15; stroke-linecap: round; fill: none; }
-.k-cap-ring { stroke: rgba(120, 96, 50, .35); stroke-width: .9; }
+.k-cap-ring { stroke: rgba(0, 0, 0, .45); stroke-width: .9; }
+.k-turn { stroke: rgba(40, 42, 46, .22); stroke-width: .5; }
+.k-pointer { stroke: rgba(0, 0, 0, .55); stroke-width: .5; }
 .knob.is-drag .k-cap-ring { stroke: var(--k-lit); stroke-width: 1.4; }
 .knob-name { font: 700 10.5px/1.2 var(--sans); letter-spacing: .13em; text-transform: uppercase; color: var(--graphite); white-space: nowrap; }
 .knob-val { font: 600 12.5px/1.25 var(--sans); font-variant-numeric: tabular-nums; color: var(--ink); min-height: 1.25em; white-space: nowrap; }

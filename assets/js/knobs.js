@@ -1,7 +1,7 @@
 /* Planet Sound — rotary knobs (the recorder's Gain, the Tape and Multiband controls).
  *
- * The look: a small piece of 1960s Italian studio hardware — a fluted ivory bakelite knob on a chrome
- * skirt, a printed scale around it, a red pointer. The scale lights up as the value rises.
+ * The look: a small piece of 1960s Italian studio hardware — a knurled black bakelite knob with a brushed-
+ * aluminium cap, a printed scale around it, a cream pointer line. The scale lights up as the value rises.
  *
  * A knob is a real slider for assistive technology (role="slider", arrow keys) and a knob for everyone else:
  *   drag up or down (Shift: fine) · mouse wheel · arrow keys (Shift: five steps, PageUp/Down: big steps)
@@ -22,20 +22,20 @@ function ensureDefs() {
   d.setAttribute('width', '0'); d.setAttribute('height', '0'); d.setAttribute('aria-hidden', 'true');
   d.style.cssText = 'position:absolute;width:0;height:0;overflow:hidden';
   d.innerHTML = `<defs>
-    <radialGradient id="psk-skirt" cx="38%" cy="30%" r="85%"><stop offset="0" stop-color="#f4f3ee"/><stop offset=".45" stop-color="#a9acaf"/><stop offset=".8" stop-color="#5d6064"/><stop offset="1" stop-color="#2b2d30"/></radialGradient>
-    <linearGradient id="psk-rim" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffffff" stop-opacity=".85"/><stop offset=".5" stop-color="#ffffff" stop-opacity="0"/><stop offset="1" stop-color="#000000" stop-opacity=".5"/></linearGradient>
-    <radialGradient id="psk-body" cx="36%" cy="28%" r="90%"><stop offset="0" stop-color="#fbf4de"/><stop offset=".5" stop-color="#e8dab6"/><stop offset="1" stop-color="#a99466"/></radialGradient>
-    <radialGradient id="psk-cap" cx="40%" cy="32%" r="80%"><stop offset="0" stop-color="#fffaf0"/><stop offset=".6" stop-color="#efe3c4"/><stop offset="1" stop-color="#cdb98b"/></radialGradient>
-    <linearGradient id="psk-ptr" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#e5522a"/><stop offset=".5" stop-color="#cf3f19"/><stop offset="1" stop-color="#9d2d0e"/></linearGradient>
+    <radialGradient id="psk-skirt" cx="38%" cy="30%" r="85%"><stop offset="0" stop-color="#8d8f93"/><stop offset=".35" stop-color="#4a4c50"/><stop offset=".8" stop-color="#202124"/><stop offset="1" stop-color="#0e0f10"/></radialGradient>
+    <linearGradient id="psk-rim" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffffff" stop-opacity=".7"/><stop offset=".5" stop-color="#ffffff" stop-opacity="0"/><stop offset="1" stop-color="#000000" stop-opacity=".6"/></linearGradient>
+    <radialGradient id="psk-body" cx="36%" cy="26%" r="95%"><stop offset="0" stop-color="#5b5754"/><stop offset=".45" stop-color="#2c2a28"/><stop offset="1" stop-color="#121110"/></radialGradient>
+    <radialGradient id="psk-cap" cx="40%" cy="30%" r="85%"><stop offset="0" stop-color="#f6f5f1"/><stop offset=".45" stop-color="#c3c5c7"/><stop offset="1" stop-color="#7d8085"/></radialGradient>
+    <linearGradient id="psk-ptr" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#fff6dc"/><stop offset="1" stop-color="#e3d2a3"/></linearGradient>
     <filter id="psk-blur" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="2.2"/></filter>
   </defs>`;
   document.body.prepend(d);
 }
 const pt = (a, r) => { const t = (a - 90) * Math.PI / 180; return [C + r * Math.cos(t), C + r * Math.sin(t)]; };
 const f2 = n => n.toFixed(2);
-const FLUTES = (() => {                          // the fluted edge of the knob: 36 short radial strokes
+const FLUTES = (() => {                          // the fluted edge of the knob: 60 short radial strokes, a knurled edge
   let d = '';
-  for (let i = 0; i < 36; i++) { const a = i * 10, [x0, y0] = pt(a, 30.6), [x1, y1] = pt(a, 33.2); d += `M${f2(x0)} ${f2(y0)}L${f2(x1)} ${f2(y1)}`; }
+  for (let i = 0; i < 60; i++) { const a = i * 6, [x0, y0] = pt(a, 29.4), [x1, y1] = pt(a, 33.2); d += `M${f2(x0)} ${f2(y0)}L${f2(x1)} ${f2(y1)}`; }
   return d;
 })();
 
@@ -87,8 +87,9 @@ export function createKnob(host, o) {
   el('circle', { cx: 50, cy: 50, r: 33.2, fill: 'url(#psk-body)', class: 'k-body' }, rot);
   el('path', { d: FLUTES, class: 'k-flutes' }, rot);
   el('circle', { cx: 50, cy: 50, r: 24.5, fill: 'url(#psk-cap)', class: 'k-cap' }, rot);
+  for (const r of [21, 17.5, 14, 10.5]) el('circle', { cx: 50, cy: 50, r, fill: 'none', class: 'k-turn' }, rot);
   el('circle', { cx: 50, cy: 50, r: 24.5, fill: 'none', class: 'k-cap-ring' }, rot);
-  el('path', { d: 'M47.6 27.5 L52.4 27.5 L51.4 12.6 Q50 11.2 48.6 12.6 Z', fill: 'url(#psk-ptr)', class: 'k-pointer' }, rot);
+  el('rect', { x: 48.5, y: 13.4, width: 3, height: 13, rx: 1.5, fill: 'url(#psk-ptr)', class: 'k-pointer' }, rot);
   el('ellipse', { cx: 41, cy: 38, rx: 9, ry: 4.6, transform: 'rotate(-38 41 38)', fill: '#fff', opacity: '.22', class: 'k-shine' });
   knob.append(svg);
   const out = document.createElement('output'); out.className = 'knob-val';

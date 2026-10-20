@@ -27,7 +27,7 @@ export async function initFxUi({ player, toast }) {
   const R = dsp.RANGES;
   const rack = $('#rack'), tapeEl = $('#rk-tape'), mbEl = $('#rk-mb'), note = $('#rack-note'), stateEl = $('#shape-state');
   let sel = 0, soundId = null, noteTimer = 0;
-  const K = { tape: {}, mb: {}, band: [] };
+  const K = { tape: {}, mb: {}, band: [], gain: [] };
 
   const say = (t, err = false) => { note.textContent = t; note.classList.toggle('err', err); };
   const P = () => fxState.get();
@@ -126,8 +126,13 @@ export async function initFxUi({ player, toast }) {
   const tabs = $('#mb-tabs');
   for (let b = 0; b < 3; b++) {
     const t = el('div', 'band-tab'); t.setAttribute('role', 'tab'); t.tabIndex = 0; t.dataset.b = b; t.style.setProperty('--bc', BAND_COLORS[b]);
-    t.innerHTML = `<span class="bt-name"><i></i>${BAND_NAMES[b]}</span><span class="bt-hz"></span><span class="bt-btns"><button type="button" class="on" data-a="on" title="Band on. Off: the band passes through untouched." aria-label="${BAND_NAMES[b]} band on">On</button><button type="button" data-a="solo" title="Hear only this band" aria-label="Solo ${BAND_NAMES[b]} band">Solo</button></span>`;
+    t.innerHTML = `<span class="bt-name"><i></i>${BAND_NAMES[b]}</span><span class="bt-hz"></span><span class="bt-btns"><button type="button" class="on" data-a="on" title="Band on. Off: the band passes through untouched." aria-label="${BAND_NAMES[b]} band on">On</button><button type="button" data-a="solo" title="Hear only this band" aria-label="Solo ${BAND_NAMES[b]} band">Solo</button></span><span class="bt-gain"></span>`;
     tabs.append(t);
+    K.gain.push(kn(t.querySelector('.bt-gain'), {
+      label: 'Gain', min: -24, max: 24, step: 0.5, value: 0, def: 0, origin: 0, format: dbf, speech: v => `${BAND_NAMES[b]} band gain ${dbf(v)}`,
+      hint: `${BAND_NAMES[b]} band level, after the compressor. Double-click to reset.`,
+      onInput: v => chg('mb', d => { d.mb.bands[b].outDb = v; }),
+    }));
   }
   const g1 = $('#mb-g1');
   const bk = (label, key, o) => { const k = kn(g1, { label, ...o, onInput: v => chg('mb', d => { d.mb.bands[sel][key] = v; }) }); K.band.push([key, k]); return k; };
@@ -137,8 +142,7 @@ export async function initFxUi({ player, toast }) {
   bk('Ratio ↑', 'bRat', { min: 0.25, max: 4, scale: 'log', steps: 160, value: 1, def: 1, origin: 1, detent: true, round: v => +v.toFixed(2), format: ratio, hint: 'Above 1: upward compression, quiet parts come up. Below 1: an expander, quiet parts go down.' });
   bk('Attack', 'atk', { min: 0.05, max: 300, scale: 'log', steps: 160, value: 20, def: 20, origin: 0.05, round: v => (v < 1 ? +v.toFixed(2) : v < 10 ? +v.toFixed(1) : Math.round(v)), format: msf, hint: 'How fast the band is turned down.' });
   bk('Release', 'rel', { min: 5, max: 3000, scale: 'log', steps: 160, value: 200, def: 200, origin: 5, round: v => Math.round(v), format: msf, hint: 'How fast the band comes back.' });
-  bk('In', 'inDb', { min: -24, max: 24, step: 0.5, value: 0, def: 0, origin: 0, format: dbf, hint: 'Level into the band, before the compressor.' });
-  bk('Out', 'outDb', { min: -24, max: 24, step: 0.5, value: 0, def: 0, origin: 0, format: dbf, hint: 'Level out of the band.' });
+  bk('Input', 'inDb', { min: -24, max: 24, step: 0.5, value: 0, def: 0, origin: 0, format: dbf, hint: 'Level into the band, before the compressor.' });
   K.mb.lo = kn($('#mb-g0'), {
     label: 'Low split', min: R.mb.lo[0], max: R.mb.lo[1], scale: 'log', steps: 160, value: 100, def: 100, origin: 20, round: v => +v.toPrecision(3), format: hzf, hint: 'Crossover between the low and mid bands.',
     onInput: v => chg('mb', d => { d.mb.lo = v; }),
@@ -173,8 +177,9 @@ export async function initFxUi({ player, toast }) {
     for (const [key, k] of K.band) k.set(B[key], false);
     [...tabs.children].forEach((t, b) => {
       const bd = p.mb.bands[b];
+      K.gain[b].set(bd.outDb, false);
       t.setAttribute('aria-selected', String(b === sel));
-      const [on, solo] = t.querySelectorAll('button');
+      const [on, solo] = t.querySelectorAll('.bt-btns button');
       on.setAttribute('aria-pressed', String(bd.on)); solo.setAttribute('aria-pressed', String(bd.solo));
       const lo = b === 0 ? 20 : p.mb.lo, hi = b === 2 ? 20000 : b === 0 ? p.mb.lo : p.mb.hi;
       t.querySelector('.bt-hz').textContent = b === 0 ? `up to ${hzf(p.mb.lo)}` : b === 1 ? `${hzf(p.mb.lo)} – ${hzf(p.mb.hi)}` : `from ${hzf(p.mb.hi)}`;
