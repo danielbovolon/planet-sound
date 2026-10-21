@@ -13,6 +13,7 @@ import { fxState } from './fx.js';
 import { initCardPlus } from './cardplus.js';
 import { initContributors } from './contributors.js';
 import { shapedSpectrogramBlob } from './fxexport.js';
+import * as specPal from './specpal.js';
 
 const S = {
   sounds: [], byId: new Map(), full: new Map(), me: null,
@@ -28,7 +29,6 @@ function applyTheme() {
   document.body.classList.toggle('dark-ui', dark);
 }
 applyTheme();
-applySpecColour();
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { if (prefs.get('theme', 'auto') === 'auto') { applyTheme(); mapCtl && mapCtl.retheme(); redrawCard(); } });
 
 /* ---------------- map ---------------- */
@@ -55,18 +55,29 @@ $('#locate').addEventListener('click', () => {
 });
 
 /* ---------------- views ---------------- */
+const VIEWS = ['map', 'index', 'archive', 'about'];
 function setView(v) {
+  if (!VIEWS.includes(v)) v = 'map';
+  const was = S.view;
   S.view = v;
+  document.body.dataset.page = v;
   $$('.views [data-view]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.view === v)));
-  $('#map-view').hidden = v !== 'map';
-  $('#index-view').hidden = v !== 'index';
-  $('#about-view').hidden = v !== 'about';
+  for (const k of VIEWS) $(`#${k}-view`).hidden = k !== v;
   $('.bar').classList.remove('open'); $('#menu-btn').setAttribute('aria-expanded', 'false');
+  // every page starts at its top, and only one page is ever open
+  if (v !== 'map') { const el = $(`#${v}-view`); if (el && was !== v) el.scrollTop = 0; closeCard(); }
   if (v === 'map') requestAnimationFrame(() => mapCtl.resize());
   if (v === 'index') renderIndex();
-  if (v !== 'map' && innerWidth <= 860) closeCard();
+  if (v === 'archive' && was !== 'archive') openYou();
 }
+document.body.dataset.page = 'map';
 $$('[data-view]').forEach(b => b.addEventListener('click', () => setView(b.dataset.view)));
+// a tap outside the open phone menu closes it
+document.addEventListener('pointerdown', e => {
+  if ($('.bar').classList.contains('open') && !e.target.closest('.views') && !e.target.closest('#menu-btn')) {
+    $('.bar').classList.remove('open'); $('#menu-btn').setAttribute('aria-expanded', 'false');
+  }
+});
 $('#menu-btn').addEventListener('click', () => {
   const open = !$('.bar').classList.contains('open');
   $('.bar').classList.toggle('open', open); $('#menu-btn').setAttribute('aria-expanded', String(open));
@@ -121,9 +132,17 @@ function setSounds(list, fromCache) {
 let indexTagsBound = false;
 function renderIndex(v = visible()) {
   if (!indexTagsBound) {
-    tagButtons($('#tag-filter'), S.tags, { all: true, onChange: () => refresh() });
+    tagButtons($('#tag-filter'), S.tags, { all: true, onChange: () => { refresh(); tagMore(); } });
+    const more = document.createElement('button');
+    more.type = 'button'; more.className = 'tag-more'; more.id = 'tag-more'; more.setAttribute('aria-controls', 'tag-filter');
+    more.addEventListener('click', () => { $('#tag-filter').classList.toggle('open'); tagMore(); });
+    const wrap = document.createElement('div'); wrap.className = 'tag-wrap';
+    $('#tag-filter').before(wrap); wrap.append($('#tag-filter'), more);
+    $('#tag-filter').classList.add('fold');
+    addEventListener('resize', tagMore);
     indexTagsBound = true;
   }
+  requestAnimationFrame(tagMore);
   const total = v.reduce((a, s) => a + (s.duration || 0), 0);
   $('#index-sum').textContent = v.length ? `${v.length} recording${v.length === 1 ? '' : 's'}, ${fmtTime(total)} of listening` : '';
   const rows = $('#rows');
@@ -139,6 +158,15 @@ function renderIndex(v = visible()) {
   const empty = $('#index-empty');
   empty.hidden = !!v.length;
   if (!v.length) empty.textContent = S.sounds.length ? 'Nothing matches. Clear the search or pick another tag.' : 'The archive is empty. Record the first sound.';
+}
+function tagMore() {
+  const row = $('#tag-filter'), more = $('#tag-more'); if (!row || !more) return;
+  const open = row.classList.contains('open');
+  row.classList.remove('open'); const folds = row.scrollHeight > row.clientHeight + 2; row.classList.toggle('open', open);
+  more.hidden = !folds && !open;
+  const sel = S.tags.length ? ` · ${S.tags[0]}` : '';
+  more.textContent = open ? 'Fewer tags' : `All tags${sel}`;
+  more.setAttribute('aria-expanded', String(open));
 }
 $('#rows').addEventListener('click', e => {
   const r = e.target.closest('.tr'); if (!r) return;
@@ -170,15 +198,24 @@ const player = new Player({
   },
   onState: (st, err) => {
     const on = st === 'playing' || st === 'loading';
-    $('#c-play').classList.toggle('on', on);
-    $('#c-play').setAttribute('aria-label', on ? 'Pause' : 'Play');
-    $('#m-play').classList.toggle('on', on);
-    $('#m-play').setAttribute('aria-label', on ? 'Pause' : 'Play');
+    playIcon($('#c-play'), on); playIcon($('#m-play'), on);
     $('#c-sono').classList.toggle('playing', on);
     $('#c-status').textContent = st === 'loading' ? 'Loading…' : st === 'error' ? `This recording could not be played here${err && err.code ? ` (player code ${err.code})` : ''}. Try downloading it, or another browser.` : '';
   },
 });
 let seeking = false;
+/* The play/pause icon is a single path that is replaced, never two icons shown and hidden. */
+const ICON_PLAY = 'M8.5 5.6v12.8L18.6 12z', ICON_PAUSE = 'M7 5.5h3.6v13H7zM13.4 5.5H17v13h-3.6z';
+function playIcon(btn, on) {
+  if (!btn) return;
+  if (btn.dataset.icon !== (on ? 'pause' : 'play')) {
+    btn.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="${on ? ICON_PAUSE : ICON_PLAY}"/></svg>`;
+    btn.dataset.icon = on ? 'pause' : 'play';
+  }
+  btn.classList.toggle('on', on);
+  btn.setAttribute('aria-label', on ? 'Pause' : 'Play');
+}
+playIcon($('#c-play'), false); playIcon($('#m-play'), false);
 // two play bars, one engine: both only ever drive `player`, and both read their position back from it
 $('#c-play').addEventListener('click', () => player.toggle());
 $('#m-play').addEventListener('click', () => player.toggle());
@@ -232,13 +269,13 @@ function fillCard(s, partial) {
   const spec = $('#c-spec');
   const specUrl = mediaUrl(s.spectrogram);
   spec.classList.toggle('empty', !specUrl);
-  spec.style.webkitMaskImage = spec.style.maskImage = specUrl ? `url("${specUrl}")` : '';
+  specPal.paint(spec, specUrl);
   $('.sono-axis').hidden = !specUrl;
   $('#c-sono').classList.remove('playing', 'cued');
   if (partial) {
     if (player.sound && player.sound.id === s.id) return;
     player.load({ ...s, peaks: null }, mediaUrl(s.audio));
-    $('#c-notes').textContent = ''; $('#c-facts').innerHTML = ''; cardPlus.setPhoto(s.photo ? mediaUrl(s.photo) : null, `Photo taken where ${s.title} was recorded`);
+    $('#c-facts').innerHTML = ''; cardPlus.setPhoto(s.photo ? mediaUrl(s.photo) : null, `Photo taken where ${s.title} was recorded`);
     drawWave($('#c-wave'), null);
   } else {
     if (!player.sound || player.sound.id !== s.id || !player.sound.peaks) {
@@ -246,7 +283,6 @@ function fillCard(s, partial) {
       if (!playing) player.load(s, mediaUrl(s.audio)); else player.sound = s;
     }
     drawWave($('#c-wave'), s.peaks, 0);
-    $('#c-notes').textContent = s.notes || '';
     cardPlus.setPhoto(s.photo ? mediaUrl(s.photo) : null, `Photo taken where ${s.title} was recorded`);
     $('#c-facts').innerHTML = factsHtml(s);
   }
@@ -301,7 +337,7 @@ $('#c-collect').addEventListener('click', () => collectDialog(S.current));
 let editPhoto, editLoc, editTags = [];
 $('#c-edit').addEventListener('click', () => {
   const s = S.full.get(S.current); if (!s) return;
-  $('#e-title').value = s.title || ''; $('#e-notes').value = s.notes || ''; $('#e-equip').value = s.equipment || '';
+  $('#e-title').value = s.title || ''; $('#e-equip').value = s.equipment || '';
   $('#e-place').value = s.place || ''; $('#e-when').value = toLocalInput(s.recordedAt || s.createdAt);
   $('#e-credit').value = s.credit || ''; $('#e-dl').checked = !!s.allowDownload;
   $$('input[name="evis"]').forEach(r => { r.checked = r.value === s.visibility; });
@@ -325,7 +361,7 @@ $('#e-move').addEventListener('click', async () => {
 $('#e-save').addEventListener('click', async () => {
   const s = S.full.get(S.current); if (!s) return;
   const b = {
-    title: $('#e-title').value, notes: $('#e-notes').value, tags: editTags, equipment: $('#e-equip').value, place: $('#e-place').value,
+    title: $('#e-title').value, notes: '', tags: editTags, equipment: $('#e-equip').value, place: $('#e-place').value,
     recordedAt: fromLocalInput($('#e-when').value), credit: $('#e-credit').value, allowDownload: $('#e-dl').checked,
     visibility: $('input[name="evis"]:checked').value, lat: editLoc.lat, lng: editLoc.lng,
   };
@@ -343,13 +379,31 @@ $('#e-save').addEventListener('click', async () => {
 });
 
 /* ---------------- spectrogram colour, image and removal ---------------- */
-function specKey() { return prefs.get('specColour', 'ink'); }
-function applySpecColour() { document.documentElement.dataset.spec = specKey(); }
-function specColour() {
-  const k = specKey();
-  if (k === 'moss') return '#3F7D4E';
-  return getComputedStyle(document.documentElement).getPropertyValue(k === 'signal' ? '--signal' : '--ink').trim() || '#1E2B4D';
-}
+/* Spectrogram palettes: press and hold the spectrogram (0.6 s) for the next one. No buttons, no names;
+   the palette on screen is the one exported. */
+(() => {
+  const fig = $('#c-sono'), HOLD = 600;
+  let timer = 0, x0 = 0, y0 = 0, pos = null, fired = false;
+  const cancel = () => { clearTimeout(timer); timer = 0; };
+  fig.addEventListener('pointerdown', e => {
+    if (e.button > 0) return;
+    fired = false; x0 = e.clientX; y0 = e.clientY;
+    const was = $('#c-seek').value; pos = Number(was) / 1000;
+    cancel();
+    timer = setTimeout(() => {
+      timer = 0; fired = true;
+      specPal.next();
+      // a hold changes the colours only: put the playhead back where it was
+      if (pos != null) player.seek(pos); $('#c-seek').value = was;
+      fig.classList.remove('pal-flash'); void fig.offsetWidth; fig.classList.add('pal-flash');
+      try { navigator.vibrate && navigator.vibrate(12); } catch {}
+    }, HOLD);
+  }, true);
+  fig.addEventListener('pointermove', e => { if (timer && Math.hypot(e.clientX - x0, e.clientY - y0) > 10) cancel(); }, true);
+  for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) fig.addEventListener(ev, cancel, true);
+  fig.addEventListener('contextmenu', e => e.preventDefault());
+  fig.addEventListener('click', e => { if (fired) { e.preventDefault(); e.stopPropagation(); fired = false; } }, true);
+})();
 $('#c-specdl').addEventListener('click', async () => {
   const s = S.full.get(S.current); if (!s || !s.spectrogram) return;
   const name = `${accession(s.no).replace(' ', '-')} ${s.title} spectrogram.png`;
@@ -360,24 +414,13 @@ $('#c-specdl').addEventListener('click', async () => {
     try {
       toast('Rendering the spectrogram of the shaped sound…', 4000);
       btn.textContent = 'Rendering…';
-      const sheet = getComputedStyle(document.documentElement).getPropertyValue('--sheet').trim() || '#F7F7F4';
-      save(await shapedSpectrogramBlob(mediaUrl(s.audio), s, specColour(), sheet, f => { btn.textContent = `Rendering ${Math.round(f * 100)}%`; }));
+      save(await shapedSpectrogramBlob(mediaUrl(s.audio), s, specPal.lut(), f => { btn.textContent = `Rendering ${Math.round(f * 100)}%`; }));
     } catch (e) { console.warn(e); toast('Could not render the spectrogram of the shaped sound.', 5000); }
     finally { btn.disabled = false; btn.textContent = label; }
     return;
   }
   try {
-    const r = await fetch(mediaUrl(s.spectrogram), { cache: 'no-store' });
-    if (!r.ok) throw new Error('download failed');
-    const bmp = await createImageBitmap(await r.blob());
-    const ink = document.createElement('canvas'); ink.width = bmp.width; ink.height = bmp.height;
-    const ic = ink.getContext('2d');
-    ic.fillStyle = specColour(); ic.fillRect(0, 0, ink.width, ink.height);
-    ic.globalCompositeOperation = 'destination-in'; ic.drawImage(bmp, 0, 0);
-    const out = document.createElement('canvas'); out.width = bmp.width; out.height = bmp.height;
-    const oc = out.getContext('2d');
-    oc.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--sheet').trim() || '#F7F7F4';
-    oc.fillRect(0, 0, out.width, out.height); oc.drawImage(ink, 0, 0);
+    const out = await specPal.colourCanvas(mediaUrl(s.spectrogram));
     out.toBlob(save, 'image/png');
   } catch (e) { toast('Could not download the spectrogram.'); }
 });
@@ -391,7 +434,7 @@ $('#e-delete').addEventListener('click', async () => {
     S.full.delete(s.id);
     setSounds(S.sounds.filter(x => x.id !== s.id));
     await load();
-    if ($('#you').open) renderYou();
+    if (S.view === 'archive') renderYou();
     toast('Recording removed');
   } catch (e) { $('#e-msg').textContent = e.message; }
 });
@@ -476,11 +519,8 @@ function ownIds() {
   return m && identity.key && m.key === identity.key ? new Set(m.ids || []) : new Set();
 }
 function isMine(s) { return !!s.mine || ownIds().has(s.id); }
-$('#you-btn').addEventListener('click', openYou);
 async function openYou() {
-  $('.bar').classList.remove('open');
   renderYou();
-  $('#you').showModal();
   if (identity.key) {
     try { await load(); const d = await call('/api/me'); identity.setUser(d.user); renderYou(); }
     catch (e) { if (e.status === 401) { identity.clear(); renderYou('You have been signed out on this device. Sign in again to see your archive.'); } }
@@ -492,7 +532,6 @@ async function renderYou(warning) {
   const pending = await outbox.all().catch(() => []);
   const u = identity.user;
   const theme = prefs.get('theme', 'auto');
-  const spec = prefs.get('specColour', 'ink');
   const flacs = mine.filter(s => s.tech && s.tech.codec === 'FLAC');
   const rows = mine.map(s => `<li><button type="button" class="y-item" data-open="${esc(s.id)}"><span class="y-title">${esc(s.title)}</span><small>${esc(s.place || accession(s.no))}${s.visibility === 'private' ? ' · private' : ''}</small></button></li>`).join('');
   body.innerHTML = `
@@ -500,7 +539,7 @@ async function renderYou(warning) {
     ${u && u.email ? `<section class="you-sec"><h3>Signed in</h3><p>${esc(u.email)}. Everything you publish goes to this account, from any device you sign in on.</p><button type="button" class="btn quiet" id="y-signout">Sign out on this device</button></section>`
       : `<section class="you-sec"><h3>Sign in</h3><p>One account for you, on every device. Sign in once on each device; it stays signed in there.</p><div style="display:grid;gap:8px"><input id="y-email" type="email" autocomplete="username" placeholder="Email" aria-label="Email" style="min-height:38px;padding:0 10px;border-radius:8px;border:1px solid var(--rule);background:var(--paper)"><input id="y-pass" type="password" autocomplete="current-password" placeholder="Password (at least 8 characters)" aria-label="Password" style="min-height:38px;padding:0 10px;border-radius:8px;border:1px solid var(--rule);background:var(--paper)"><div class="row"><button type="button" class="btn solid" id="y-in">Sign in</button><button type="button" class="btn quiet" id="y-new">Create account</button></div></div><p id="y-sent" class="you-note" aria-live="polite"></p><p class="you-note">There is no email recovery yet. If you forget the password, it can be reset from the admin side.</p></section>`}
     <section class="you-sec">
-      <div class="you-stats"><div><b>${mine.length}</b>recordings</div><div><b>${priv.length}</b>you</div><div><b>${S.collections.length}</b>collections</div></div>
+      <div class="you-stats"><div><b>${mine.length}</b>recordings</div><div><b>${priv.length}</b>private</div><div><b>${S.collections.length}</b>collections</div></div>
     </section>
     ${pending.length ? `<section class="you-sec"><h3>Waiting to upload</h3><p>${pending.length} recording${pending.length === 1 ? ' is' : 's are'} saved on this device and will be published when there is a connection${u && u.email ? '' : ' and you are signed in'}.</p><button type="button" class="btn" id="y-retry">Try now</button></section>` : ''}
     <section class="you-sec">
@@ -523,27 +562,22 @@ async function renderYou(warning) {
       <h3>Appearance</h3>
       <div class="seg" role="group" aria-label="Appearance">${['auto', 'light', 'dark'].map(t => `<button type="button" data-theme-set="${t}" aria-pressed="${theme === t}">${t === 'auto' ? 'Match device' : t === 'light' ? 'Paper' : 'Night'}</button>`).join('')}</div>
     </section>
-    <section class="you-sec">
-      <h3>Spectrogram colour</h3>
-      <div class="seg" role="group" aria-label="Spectrogram colour">${[['ink', 'Blue'], ['signal', 'Red'], ['moss', 'Green']].map(([k, l]) => `<button type="button" data-spec-set="${k}" aria-pressed="${spec === k}">${l}</button>`).join('')}</div>
-    </section>
     ${mine.length ? `<section class="you-sec"><h3>Export</h3><p>A catalogue of your recordings with links to every original file.</p><button type="button" class="btn" id="y-export">Download catalogue (JSON)</button></section>` : ''}
     </details>`;
   const on = (id, fn) => { const x = body.querySelector(id); if (x) x.onclick = fn; };
-  body.querySelectorAll('[data-open]').forEach(b => b.onclick = () => { $('#you').close(); openCard(b.dataset.open, { fly: true }); });
-  on('#y-retry', async () => { $('#you').close(); await flushOutbox(true); });
+  body.querySelectorAll('[data-open]').forEach(b => b.onclick = () => { setView('map'); openCard(b.dataset.open, { fly: true }); });
+  on('#y-retry', async () => { await flushOutbox(true); renderYou(); });
   on('#y-save-name', async () => {
     const name = body.querySelector('#y-name').value.trim(); prefs.set('credit', name);
     if (identity.key) { try { const d = await call('/api/me', { method: 'PATCH', body: { name } }); identity.setUser(d.user); } catch (e) { return toast(e.message); } }
     toast('Saved');
   });
-  body.querySelectorAll('[data-show]').forEach(b => b.onclick = () => { S.collection = b.dataset.show; renderCollectionFilter(); $('#you').close(); setView('index'); refresh(); });
+  body.querySelectorAll('[data-show]').forEach(b => b.onclick = () => { S.collection = b.dataset.show; renderCollectionFilter(); setView('index'); refresh(); });
   body.querySelectorAll('[data-del]').forEach(b => b.onclick = async () => {
     const c = S.collections.find(x => x.id === b.dataset.del);
     if (!(await ask({ title: `Delete “${c.name}”?`, body: 'The recordings stay in the archive. Only the collection goes.', yes: 'Delete', danger: true }))) return openYou();
     S.collections = S.collections.filter(x => x.id !== c.id); if (S.collection === c.id) S.collection = ''; saveCollections(); refresh(); openYou();
   });
-  body.querySelectorAll('[data-spec-set]').forEach(b => b.onclick = () => { prefs.set('specColour', b.dataset.specSet); applySpecColour(); renderYou(); });
   body.querySelectorAll('[data-theme-set]').forEach(b => b.onclick = () => { prefs.set('theme', b.dataset.themeSet); applyTheme(); mapCtl.retheme(); redrawCard(); renderYou(); });
   on('#y-export', exportCatalogue);
   const signInWith = async create => {

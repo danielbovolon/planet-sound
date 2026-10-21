@@ -204,7 +204,7 @@ async function openWav() {
     W.fx = fxState.neutral() ? '' : fxState.describe();
     const acc = accession(s.no).replace(/\s+/g, '-');
     wEl('w-name').value = `${acc} ${s.title}`.slice(0, 100);
-    const lines = [s.notes, [s.place, fmtCoords(s.lat, s.lng)].filter(Boolean).join(', '),
+    const lines = [[s.place, fmtCoords(s.lat, s.lng)].filter(Boolean).join(', '),
       s.recordedAt ? 'Recorded ' + fmtDate(s.recordedAt, true) : '', s.credit ? 'Recorded by ' + s.credit : '', s.equipment ? 'Equipment: ' + s.equipment : '',
       `${accession(s.no)} on Planet Sound`].filter(Boolean);
     wEl('w-desc').value = lines.join('\n');

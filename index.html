@@ -26,6 +26,7 @@
 <link rel="stylesheet" href="assets/css/update4.css">
 <link rel="stylesheet" href="assets/css/nobox.css">
 <link rel="stylesheet" href="assets/css/finish.css">
+<link rel="stylesheet" href="assets/css/update5.css">
 <script src="config.js"></script>
 </head>
 <body>
@@ -39,7 +40,7 @@
   <nav class="views" aria-label="Views">
     <button type="button" data-view="map" aria-pressed="true">Map</button>
     <button type="button" data-view="index" aria-pressed="false">Index</button>
-    <button type="button" class="you" id="you-btn" aria-haspopup="dialog">Your archive</button>
+    <button type="button" data-view="archive" aria-pressed="false">Archive</button>
     <button type="button" data-view="about" aria-pressed="false">About</button>
   </nav>
   <label class="search">
@@ -107,6 +108,14 @@
     </div>
   </section>
 
+  <!-- ARCHIVE -->
+  <section class="view" id="archive-view" aria-label="Archive" hidden>
+    <div class="archive-wrap">
+      <div class="index-head"><h1>Archive</h1></div>
+      <div class="archive-body" id="you-body"></div>
+    </div>
+  </section>
+
   <!-- ABOUT -->
   <section class="view" id="about-view" aria-label="About" hidden>
     <article class="about">
@@ -155,7 +164,7 @@
     </div>
 
     <figure class="sono" id="c-sono">
-      <div class="sono-img" id="c-spec" role="img" aria-label="Spectrogram"></div>
+      <div class="sono-img" id="c-spec" role="img" aria-label="Spectrogram. Press and hold to change its colours."></div>
       <div class="sono-axis" aria-hidden="true"><span style="top:12%">10 kHz</span><span style="top:46.9%">1 kHz</span><span style="top:81.8%">100 Hz</span></div>
       <canvas class="wave" id="c-wave" aria-hidden="true"></canvas>
       <div class="head" id="c-head" aria-hidden="true"></div>
@@ -169,8 +178,6 @@
       <label class="lm" title="Plays every entry at a similar loudness without changing the file"><input type="checkbox" id="c-lm" checked> Level-matched</label>
     </div>
     <p class="status" id="c-status" role="status"></p>
-
-    <div class="c-notes" id="c-notes"></div>
 
     <dl class="facts" id="c-facts"></dl>
 
@@ -249,7 +256,7 @@
       <div class="fx-knobs">
         <div id="k-gain"></div>
       </div>
-      <p class="fx-note" id="s-fx-note">Set the level before you record. The meters show what is recorded. Double-click the knob to reset it.</p>
+      <p class="fx-note" id="s-fx-note"></p>
     </div>
     <div class="deck">
       <p class="clock" id="s-clock">00:00<small>.0</small></p>
@@ -284,9 +291,7 @@
   <!-- describe -->
   <div class="pane form" data-pane="describe" hidden>
     <h2>Describe it</h2>
-    <p class="hint">A title is enough. Everything else helps future listeners.</p>
     <label class="field"><span>Title</span><input id="d-title" maxlength="140" placeholder="Courtyard, early morning"></label>
-    <label class="field"><span>Notes</span><textarea id="d-notes" rows="4" maxlength="2000" placeholder="What can be heard, and why it mattered to you"></textarea></label>
     <fieldset class="field"><legend>Tags <small id="d-tagcount">up to three</small></legend><div class="tagrow" id="d-tags"></div></fieldset>
     <div class="row two">
       <label class="field"><span>Recorded</span><input id="d-when" type="datetime-local"></label>
@@ -319,10 +324,6 @@
 </section>
 
 <!-- DIALOGS -->
-<dialog class="sheet" id="you">
-  <form method="dialog" class="sheet-head"><h2>Your archive</h2><button class="x" aria-label="Close" value="close"></button></form>
-  <div class="sheet-body" id="you-body"></div>
-</dialog>
 
 <dialog class="sheet small" id="ask">
   <h2 id="ask-title"></h2>
@@ -335,7 +336,6 @@
   <form method="dialog" class="sheet-head"><h2>Edit entry</h2><button class="x" aria-label="Close" value="close"></button></form>
   <div class="sheet-body form">
     <label class="field"><span>Title</span><input id="e-title" maxlength="140"></label>
-    <label class="field"><span>Notes</span><textarea id="e-notes" rows="4" maxlength="2000"></textarea></label>
     <fieldset class="field"><legend>Tags <small id="e-tagcount">up to three</small></legend><div class="tagrow" id="e-tags"></div></fieldset>
     <div class="row two">
       <label class="field"><span>Recorded</span><input id="e-when" type="datetime-local"></label>

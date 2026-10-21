@@ -271,7 +271,7 @@ function fftReal(n) {                          // one shared FFT for the spectro
  * A log-frequency spectrogram (30 Hz to 22 kHz, like the archive's) of the given channels, drawn in `ink` on `bg`.
  * @returns {HTMLCanvasElement}
  */
-export async function spectrogram(chs, rate, { ink = '#1E2B4D', bg = '#F7F7F4', width = 1600, height = 420 } = {}) {
+export async function spectrogram(chs, rate, { ink = '#1E2B4D', bg = '#F7F7F4', width = 1600, height = 420, lut = null } = {}) {
   await loadDsp();
   const N = 2048, H = N / 2, fft = fftReal(N), len = chs[0].length;
   const mono = new Float32Array(len);
@@ -297,7 +297,9 @@ export async function spectrogram(chs, rate, { ink = '#1E2B4D', bg = '#F7F7F4', 
       const db = 20 * Math.log10(m);
       let a = (db + 96) / 70; a = a < 0 ? 0 : a > 1 ? 1 : a; a = Math.pow(a, 1.15);
       const o = (y * width + x) * 4;
-      img.data[o] = Bg[0] + (I[0] - Bg[0]) * a; img.data[o + 1] = Bg[1] + (I[1] - Bg[1]) * a; img.data[o + 2] = Bg[2] + (I[2] - Bg[2]) * a; img.data[o + 3] = 255;
+      if (lut) { const j = Math.round(a * 255) * 3; img.data[o] = lut[j]; img.data[o + 1] = lut[j + 1]; img.data[o + 2] = lut[j + 2]; }
+      else { img.data[o] = Bg[0] + (I[0] - Bg[0]) * a; img.data[o + 1] = Bg[1] + (I[1] - Bg[1]) * a; img.data[o + 2] = Bg[2] + (I[2] - Bg[2]) * a; }
+      img.data[o + 3] = 255;
     }
     if (x - last > 40) { last = x; await new Promise(r => setTimeout(r, 0)); }
   }

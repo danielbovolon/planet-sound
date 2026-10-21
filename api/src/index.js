@@ -183,7 +183,7 @@ function shapeSound(r, me, full = false) {
     mine: !!(me && r.owner_id === me.id),
   };
   if (full) {
-    s.notes = r.notes; s.equipment = r.equipment; s.updatedAt = r.updated_at;
+    s.equipment = r.equipment; s.updatedAt = r.updated_at;
     s.tech.peakDb = r.peak_db; s.tech.backgroundLufs = r.background_lufs; s.tech.clipped = r.clipped;
     s.tech.audioType = r.audio_type; s.tech.audioBytes = r.audio_bytes;
     s.peaks = safeJson(r.peaks, null);
@@ -215,7 +215,7 @@ function readFields(b, partial) {
   const f = {};
   const set = (k, v) => { if (v !== undefined) f[k] = v; };
   if (!partial || 'title' in b) set('title', clip(b.title, 140) || (partial ? undefined : 'Untitled recording'));
-  if (!partial || 'notes' in b) set('notes', clip(b.notes, 2000));
+  if (!partial || 'notes' in b) f.notes = null;   // entries carry a title only; notes are no longer kept
   if (!partial || 'tags' in b) set('tags', JSON.stringify((Array.isArray(b.tags) ? b.tags : []).filter(t => TAG_VOCAB.includes(t)).slice(0, 3)));
   if (!partial || 'lat' in b) { const v = num(b.lat, -90, 90); if (v === null) fail(400, 'Latitude must be between −90 and 90.'); f.lat = v; }
   if (!partial || 'lng' in b) { const v = num(b.lng, -180, 180); if (v === null) fail(400, 'Longitude must be between −180 and 180.'); f.lng = v; }

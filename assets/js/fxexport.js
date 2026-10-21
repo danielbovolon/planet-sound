@@ -28,11 +28,11 @@ export async function shapedChannels(ab, sound, onProgress) {
   if (!fxState.neutral()) chs = await renderFx(chs, buf.sampleRate, fxState.get(), onProgress);
   return { chs, rate: buf.sampleRate };
 }
-/** A PNG spectrogram of the shaped sound, in the given ink colour on the given paper. */
-export async function shapedSpectrogramBlob(url, sound, ink, bg, onProgress) {
+/** A PNG spectrogram of the shaped sound, through the given palette (256-entry RGB table). */
+export async function shapedSpectrogramBlob(url, sound, lut, onProgress) {
   const ab = await fetchAudio(url, sound.tech && sound.tech.audioBytes, f => onProgress && onProgress(f * 0.3));
   const { chs, rate } = await shapedChannels(ab, sound, f => onProgress && onProgress(0.3 + f * 0.5));
-  const cv = await spectrogram(chs, rate, { ink, bg });
+  const cv = await spectrogram(chs, rate, { lut });
   if (onProgress) onProgress(1);
   return new Promise((res, rej) => cv.toBlob(b => (b ? res(b) : rej(new Error('image'))), 'image/png'));
 }

@@ -1,0 +1,18 @@
+Planet Sound — update 5 (replaces the earlier update 5 zip; it contains everything)
+
+Website (GitHub repo planet-sound) — upload each file to the same folder:
+  index.html                 -> root
+  sw.js                      -> root   (VERSION bumped, so phones pick up the update)
+  assets/css/update5.css     -> assets/css/   (new)
+  assets/js/specpal.js       -> assets/js/    (new)
+  assets/js/app.js           -> assets/js/
+  assets/js/studio.js        -> assets/js/
+  assets/js/share.js         -> assets/js/
+  assets/js/fx.js            -> assets/js/
+  assets/js/fxexport.js      -> assets/js/
+
+Backend (optional, makes the "no notes" rule permanent on the server):
+  api/src/index.js           -> api/src/   then in PowerShell, inside the api folder:
+      npm run deploy
+  To wipe notes already stored on existing entries, run once (inside the api folder):
+      npx wrangler d1 execute planet-sound --remote --command "UPDATE sounds SET notes = NULL"

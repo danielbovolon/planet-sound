@@ -1,4 +1,5 @@
 /* The recorder and the publishing steps. */
+import { paint as paintSpec } from './specpal.js';
 import { $, $$, fmtBytes, fmtDb, fmtFormat, fmtTime, toast, ask, tagButtons, toLocalInput, fromLocalInput, placeName, fmtCoords } from './ui.js';
 import { supportsRecording, listInputs, openInput, Recorder, importFile, retagFlac, addBext, GAIN_MIN_DB, GAIN_MAX_DB } from './audio/engine.js';
 import { ensureIdentity, upload, call, identity } from './api.js';
@@ -12,7 +13,7 @@ const MAX_SECONDS = 60 * 60;    // one hour per take
 // (a forgotten +30 dB must never surprise the next recording); "Record again" keeps it.
 const fx = { gainDb: 0 };
 let knobs = null;
-const FX_NOTE = 'Set the level before you record. The meters show what is recorded. Double-click the knob to reset it.';
+const FX_NOTE = '';
 let deps = null;
 let rec = null, inputInfo = null, take = null, state = 'off';
 let history = [], clipOn = false, holdDb = [-90, -90], holdT = [0, 0], lastMeter = null, raf = 0;
@@ -79,7 +80,7 @@ function go(step) {
     const u = identity.user;
     const signedIn = !!(identity.key && u && u.email);
     el('u-key-note').textContent = signedIn ? `Published to your account (${u.email}). Only you can edit it.`
-      : 'You need to be signed in to publish. Sign in from Your archive; a finished recording waits on this device until you are.';
+      : 'You need to be signed in to publish. Sign in from Archive; a finished recording waits on this device until you are.';
     el('u-credit').value = el('u-credit').value || (identity.user && identity.user.name) || prefs.get('credit', '');
     el('u-msg').textContent = ''; el('u-msg').classList.remove('err');
   }
@@ -108,7 +109,7 @@ function resetForm() {
   take = null; loc = null; tags.length = 0; photo = null;
   fx.gainDb = 0; if (knobs) knobs.gain.set(0, false);
   if (specUrl) URL.revokeObjectURL(specUrl); if (audioUrl) URL.revokeObjectURL(audioUrl); specUrl = audioUrl = null;
-  ['d-title', 'd-notes', 'p-lat', 'p-lng', 'p-place'].forEach(i => { el(i).value = ''; });
+  ['d-title', 'p-lat', 'p-lng', 'p-place'].forEach(i => { el(i).value = ''; });
   el('d-title').placeholder = 'Courtyard, early morning';
   el('d-equip').value = prefs.get('equipment', '');
   $$('input[name="vis"]').forEach(r => { r.checked = r.value === 'public'; });
@@ -264,11 +265,11 @@ function startRecording() {
   history = history.slice(-60);
   rec.record();
   const r = rec;
-  setTimeout(() => { if (rec === r && state === 'recording' && r.ctx && r.ctx.state !== 'running') msg('The phone has not started the microphone. Tap the square to stop, then record again.', true); }, 1500);
+  setTimeout(() => { if (rec === r && state === 'recording' && r.ctx && r.ctx.state !== 'running') msg('The phone has not started the microphone. Stop, then record again.', true); }, 1500);
   state = 'recording'; t0 = performance.now(); bytes = 0;
   el('s-rec').className = 'big-rec on'; el('s-rec').setAttribute('aria-label', 'Stop recording');
   el('s-input').disabled = true; $('.alt').hidden = true;
-  msg('Recording. Tap the square to stop.');
+  msg('Recording.');
   if (navigator.wakeLock) navigator.wakeLock.request('screen').then(l => { rec && (rec.wake = l); }).catch(() => {});
 }
 async function stopRecording() {
@@ -332,7 +333,7 @@ function drawReview() {
   const s = el('s-spec');
   if (specUrl) {
     s.hidden = false; s.classList.remove('empty');
-    s.style.webkitMaskImage = s.style.maskImage = `url(${specUrl})`;
+    paintSpec(s, specUrl);
     el('s-wave').hidden = true;
   } else {
     el('s-wave').hidden = false;
@@ -439,7 +440,6 @@ async function publish() {
   const meta = {
     id: crypto.randomUUID(),
     title: el('d-title').value.trim() || 'Untitled recording',
-    notes: el('d-notes').value.trim(),
     tags: tags.slice(),
     lat: loc.lat, lng: loc.lng, place: el('p-place').value.trim(),
     recordedAt: fromLocalInput(el('d-when').value) || take.recordedAt,
@@ -454,7 +454,7 @@ async function publish() {
   } else if (take.mime === 'audio/flac' && take.tech.source !== 'imported') {
     master = await retagFlac(master, {
       TITLE: meta.title, ARTIST: credit, DATE: meta.recordedAt, LOCATION: meta.place,
-      COORDINATES: `${meta.lat.toFixed(6)},${meta.lng.toFixed(6)}`, DESCRIPTION: meta.notes, GENRE: 'Field recording',
+      COORDINATES: `${meta.lat.toFixed(6)},${meta.lng.toFixed(6)}`, GENRE: 'Field recording',
       EQUIPMENT: meta.equipment, ORGANIZATION: 'Planet Sound', LOUDNESS: meta.lufs != null ? `${meta.lufs} LUFS` : '',
     });
   }
