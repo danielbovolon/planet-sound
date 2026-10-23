@@ -1,7 +1,8 @@
 /* The recorder and the publishing steps. */
 import { paint as paintSpec } from './specpal.js';
 import { $, $$, fmtBytes, fmtDb, fmtFormat, fmtTime, toast, ask, tagButtons, toLocalInput, fromLocalInput, placeName, fmtCoords } from './ui.js';
-import { supportsRecording, listInputs, openInput, Recorder, importFile, retagFlac, addBext, GAIN_MIN_DB, GAIN_MAX_DB } from './audio/engine.js';
+import { supportsRecording, listInputs, openInput, Recorder, importFile, retagFlac, addBext, trimTake, GAIN_MIN_DB, GAIN_MAX_DB } from './audio/engine.js';
+import { editTrim, fmtT } from './trimui.js';
 import { ensureIdentity, upload, call, identity } from './api.js';
 import { outbox, prefs } from './store.js';
 import { drawWave } from './player.js';
@@ -30,6 +31,7 @@ export function initStudio(d) {
   el('s-clip').addEventListener('click', () => { clipOn = false; el('s-clip').classList.remove('on'); });
   el('s-again').addEventListener('click', () => discardTake(true));
   el('s-keep').addEventListener('click', () => go('place'));
+  el('s-edit').addEventListener('click', editTake);
   el('s-file').addEventListener('change', onFile);
   el('s-input').addEventListener('change', () => arm(el('s-input').value));
   $$('[data-go]').forEach(b => b.addEventListener('click', () => go(b.dataset.go)));
@@ -340,6 +342,25 @@ function drawReview() {
     drawWave(el('s-wave'), take.peaks, 1);
   }
   drawMeters();
+}
+/* Edit recording: cut the take to a stretch before it is published. What is cut away is gone. */
+async function editTake() {
+  if (!take || state !== 'review') return;
+  stopListen();
+  await editTrim({
+    mode: 'take', duration: take.duration, specUrl, peaks: take.peaks, audioUrl: listener.url,
+    apply: async (r, say) => {
+      say('Cutting…');
+      try {
+        const before = take.duration;
+        const t = await trimTake(take, r.start, r.end, p => say(`Cutting… ${Math.round((p.fraction || 0) * 100)} %`));
+        listener.dispose();
+        await adoptTake(t);
+        msg(`Cut to ${fmtT(t.duration)} (from ${fmtT(before)}). Listen back before you keep it.`);
+        return true;
+      } catch (e) { console.warn('cut', e); say('The recording could not be cut here.', true); return false; }
+    },
+  });
 }
 async function discardTake(rearm) {
   const ok = !take || await ask({ title: 'Record again?', body: 'This take will be discarded.', yes: 'Discard take', no: 'Keep it', danger: true });

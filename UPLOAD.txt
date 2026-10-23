@@ -1,18 +1,30 @@
-Planet Sound — update 5 (replaces the earlier update 5 zip; it contains everything)
+Planet Sound — update 6: Edit recording, Trim, Delay, Reverb, deeper Granulator
 
-Website (GitHub repo planet-sound) — upload each file to the same folder:
-  index.html                 -> root
-  sw.js                      -> root   (VERSION bumped, so phones pick up the update)
-  assets/css/update5.css     -> assets/css/   (new)
-  assets/js/specpal.js       -> assets/js/    (new)
-  assets/js/app.js           -> assets/js/
-  assets/js/studio.js        -> assets/js/
-  assets/js/share.js         -> assets/js/
-  assets/js/fx.js            -> assets/js/
-  assets/js/fxexport.js      -> assets/js/
+1. BACKEND FIRST (needed for Trim to be saved)
+   Upload api/src/index.js -> api/src/   (also api/schema.sql and api/migrations/0004_trim.sql, for the record)
+   Then in PowerShell, inside the api folder:
+       npm run deploy
+   The Worker adds the two new database columns (trim_start, trim_end) by itself on its first request.
+   No database command is needed.
 
-Backend (optional, makes the "no notes" rule permanent on the server):
-  api/src/index.js           -> api/src/   then in PowerShell, inside the api folder:
-      npm run deploy
-  To wipe notes already stored on existing entries, run once (inside the api folder):
-      npx wrangler d1 execute planet-sound --remote --command "UPDATE sounds SET notes = NULL"
+2. WEBSITE (GitHub repo planet-sound) — upload each file to the same folder:
+   index.html                    -> root
+   sw.js                         -> root           (new VERSION, so phones pick up the update)
+   assets/css/fx.css             -> assets/css/
+   assets/css/trim.css           -> assets/css/    (new)
+   assets/js/app.js              -> assets/js/
+   assets/js/fx.js               -> assets/js/
+   assets/js/fxexport.js         -> assets/js/
+   assets/js/fxui.js             -> assets/js/
+   assets/js/grainui.js          -> assets/js/
+   assets/js/player.js           -> assets/js/
+   assets/js/share.js            -> assets/js/
+   assets/js/spaceui.js          -> assets/js/     (new)
+   assets/js/specpal.js          -> assets/js/
+   assets/js/studio.js           -> assets/js/
+   assets/js/trimui.js           -> assets/js/     (new)
+   assets/js/wav.js              -> assets/js/
+   assets/js/audio/engine.js     -> assets/js/audio/
+   assets/js/audio/fx-dsp.js     -> assets/js/audio/
+
+3. You can delete UPLOAD.txt from the root of the repo (the one from last time): it is publicly readable on the site.

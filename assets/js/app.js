@@ -14,6 +14,17 @@ import { initCardPlus } from './cardplus.js';
 import { initContributors } from './contributors.js';
 import { shapedSpectrogramBlob } from './fxexport.js';
 import * as specPal from './specpal.js';
+import { editTrim, fmtT } from './trimui.js';
+
+/* A trimmed entry: its owner chose a stretch { start, end }. Everything shown and played is that stretch. */
+const trimOf = s => (s && s.trim && s.trim.end > s.trim.start ? s.trim : null);
+const effDur = s => { const t = trimOf(s); return t ? t.end - t.start : (s && s.duration) || 0; };
+const cropOf = s => { const t = trimOf(s), d = s && s.duration; return t && d ? { s0: t.start / d, w: Math.min(1, (t.end - t.start) / d) } : null; };
+function wavePeaks(s) {
+  const p = s && s.peaks, c = cropOf(s); if (!p || !c) return p;
+  const n = p.length, a = Math.floor(c.s0 * n), b = Math.max(a + 1, Math.ceil((c.s0 + c.w) * n));
+  return p.slice(a, b);
+}
 
 const S = {
   sounds: [], byId: new Map(), full: new Map(), me: null,
@@ -98,7 +109,7 @@ function visible() {
     return true;
   });
   const t = s => new Date(s.recordedAt || s.createdAt || 0).getTime() || 0;
-  const sorts = { new: (a, b) => t(b) - t(a), old: (a, b) => t(a) - t(b), long: (a, b) => (b.duration || 0) - (a.duration || 0), title: (a, b) => (a.title || '').localeCompare(b.title || '') };
+  const sorts = { new: (a, b) => t(b) - t(a), old: (a, b) => t(a) - t(b), long: (a, b) => effDur(b) - effDur(a), title: (a, b) => (a.title || '').localeCompare(b.title || '') };
   return list.sort(sorts[S.sort] || sorts.new);
 }
 function refresh() {
@@ -143,7 +154,7 @@ function renderIndex(v = visible()) {
     indexTagsBound = true;
   }
   requestAnimationFrame(tagMore);
-  const total = v.reduce((a, s) => a + (s.duration || 0), 0);
+  const total = v.reduce((a, s) => a + effDur(s), 0);
   $('#index-sum').textContent = v.length ? `${v.length} recording${v.length === 1 ? '' : 's'}, ${fmtTime(total)} of listening` : '';
   const rows = $('#rows');
   rows.innerHTML = v.map(s => `
@@ -152,7 +163,7 @@ function renderIndex(v = visible()) {
       <span class="t" role="cell">${esc(s.title)}${s.visibility === 'private' ? '<span class="priv">Only me</span>' : ''}${s.tags && s.tags.length ? `<small>${esc(s.tags.join(', '))}</small>` : ''}</span>
       <span class="p" role="cell">${esc(s.place || fmtCoords(s.lat, s.lng))}</span>
       <span class="d" role="cell">${esc(fmtShortDate(s.recordedAt || s.createdAt))}</span>
-      <span class="du num" role="cell">${s.duration ? fmtTime(s.duration) : ''}</span>
+      <span class="du num" role="cell">${s.duration ? fmtTime(effDur(s)) : ''}</span>
       <span class="f" role="cell">${esc(fmtFormat(s.tech, true))}</span>
     </button>`).join('');
   const empty = $('#index-empty');
@@ -194,7 +205,7 @@ const player = new Player({
     $('#c-head').style.left = `calc(22px + (100% - 44px) * ${f})`;
     if (innerWidth <= 860) $('#c-head').style.left = `calc(18px + (100% - 36px) * ${f})`;
     if (!seeking) $('#c-seek').value = String(Math.round(f * 1000));
-    const s = S.current && S.full.get(S.current); if (s) drawWave($('#c-wave'), s.peaks, f);
+    const s = S.current && S.full.get(S.current); if (s) drawWave($('#c-wave'), wavePeaks(s), f);
   },
   onState: (st, err) => {
     const on = st === 'playing' || st === 'loading';
@@ -269,7 +280,7 @@ function fillCard(s, partial) {
   const spec = $('#c-spec');
   const specUrl = mediaUrl(s.spectrogram);
   spec.classList.toggle('empty', !specUrl);
-  specPal.paint(spec, specUrl);
+  specPal.paint(spec, specUrl, cropOf(s));
   $('.sono-axis').hidden = !specUrl;
   $('#c-sono').classList.remove('playing', 'cued');
   if (partial) {
@@ -282,7 +293,7 @@ function fillCard(s, partial) {
       const playing = player.sound && player.sound.id === s.id && !player.a.paused;
       if (!playing) player.load(s, mediaUrl(s.audio)); else player.sound = s;
     }
-    drawWave($('#c-wave'), s.peaks, 0);
+    drawWave($('#c-wave'), wavePeaks(s), 0);
     cardPlus.setPhoto(s.photo ? mediaUrl(s.photo) : null, `Photo taken where ${s.title} was recorded`);
     $('#c-facts').innerHTML = factsHtml(s);
   }
@@ -300,7 +311,7 @@ function factsHtml(s) {
   add('Recorded', esc(fmtDate(s.recordedAt || s.createdAt, !!s.recordedAt)));
   add('Credit', esc(s.credit || ''));
   add('Equipment', esc(s.equipment || ''));
-  add('Length', s.duration ? esc(fmtTime(s.duration)) : '');
+  add('Length', s.duration ? esc(fmtTime(effDur(s))) + (trimOf(s) ? ` <small>trimmed from ${esc(fmtTime(s.duration))}</small>` : '') : '');
   add('Format', esc(fmtFormat(t)) + (t.lossless ? ' <small>lossless</small>' : t.codec ? ' <small>compressed</small>' : ''));
   if (t.lufs != null) add('Loudness', `${fmtDb(t.lufs)} LUFS integrated${t.peakDb != null ? `, peak ${fmtDb(t.peakDb)} dBFS` : ''}`);
   if (t.backgroundLufs != null) add('Background', `${fmtDb(t.backgroundLufs)} LUFS <small>quietest tenth of the take</small>`);
@@ -333,6 +344,31 @@ $('#c-share').addEventListener('click', async () => {
   } catch {}
 });
 $('#c-collect').addEventListener('click', () => collectDialog(S.current));
+
+/* ---------------- trim (owner): choose where the recording starts and ends; the rest is hidden, not deleted ---------------- */
+$('#c-trim').addEventListener('click', async () => {
+  const s = S.full.get(S.current); if (!s || !s.audio || !s.duration) return;
+  if (player.isPlaying()) player.toggle();
+  const t = trimOf(s);
+  await editTrim({
+    mode: 'entry', duration: s.duration, specUrl: mediaUrl(s.spectrogram), peaks: s.peaks, audioUrl: player.blobFor === s.id && player.blobUrl ? player.blobUrl : mediaUrl(s.audio),
+    start: t ? t.start : 0, end: t ? t.end : s.duration, trimmed: !!t,
+    apply: async (r, say) => {
+      const whole = r === 'reset' || (r.start < 0.01 && r.end > s.duration - 0.01);
+      say('Saving…');
+      try {
+        const { sound } = await call('/api/sounds/' + s.id, { method: 'PATCH', body: whole ? { trimStart: null, trimEnd: null } : { trimStart: r.start, trimEnd: r.end } });
+        if (!whole && !trimOf(sound)) { say('The server did not keep the trim. It may need updating (see UPLOAD.txt).', true); return false; }
+        S.full.set(sound.id, sound);
+        setSounds(S.sounds.map(x => (x.id === sound.id ? { ...x, ...sound } : x)));
+        player.load(sound, mediaUrl(sound.audio));
+        fillCard(sound, false); fxui.refresh && fxui.refresh();
+        toast(whole ? 'The whole recording is back' : `Trimmed to ${fmtT(effDur(sound))}. The rest stays stored.`);
+        return true;
+      } catch (e) { say(e.message, true); return false; }
+    },
+  });
+});
 /* ---------------- edit ---------------- */
 let editPhoto, editLoc, editTags = [];
 $('#c-edit').addEventListener('click', () => {
@@ -420,7 +456,9 @@ $('#c-specdl').addEventListener('click', async () => {
     return;
   }
   try {
-    const out = await specPal.colourCanvas(mediaUrl(s.spectrogram));
+    let out = await specPal.colourCanvas(mediaUrl(s.spectrogram));
+    const c = cropOf(s);                                         // trimmed: only the stretch that is kept
+    if (c) { const w = Math.max(1, Math.round(out.width * c.w)), o2 = document.createElement('canvas'); o2.width = w; o2.height = out.height; o2.getContext('2d').drawImage(out, Math.round(out.width * c.s0), 0, w, out.height, 0, 0, w, out.height); out = o2; }
     out.toBlob(save, 'image/png');
   } catch (e) { toast('Could not download the spectrogram.'); }
 });
@@ -458,7 +496,7 @@ function pick(from) {
 function showSpot(ids) {
   const items = ids.map(id => S.byId.get(id)).filter(Boolean);
   $('#spot-title').textContent = `${items.length} recordings here`;
-  $('#spot-list').innerHTML = items.map(s => `<li><button type="button" data-id="${esc(s.id)}"><span>${esc(s.title)}</span><small>${esc(accession(s.no))}, ${esc(fmtShortDate(s.recordedAt || s.createdAt))}${s.duration ? ', ' + fmtTime(s.duration) : ''}</small></button></li>`).join('');
+  $('#spot-list').innerHTML = items.map(s => `<li><button type="button" data-id="${esc(s.id)}"><span>${esc(s.title)}</span><small>${esc(accession(s.no))}, ${esc(fmtShortDate(s.recordedAt || s.createdAt))}${s.duration ? ', ' + fmtTime(effDur(s)) : ''}</small></button></li>`).join('');
   $('#spot').showModal();
 }
 $('#spot-list').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; $('#spot').close(); openCard(b.dataset.id, { fly: false }); });

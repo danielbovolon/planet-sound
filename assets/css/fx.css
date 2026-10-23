@@ -118,3 +118,20 @@
 .gr-foot { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 10px 2px 0; }
 .gr-read { margin-left: auto; font: 600 11.5px/1 var(--sans); color: var(--graphite); font-variant-numeric: tabular-nums; }
 #rk-gr.off .knobs { opacity: .5; }
+
+/* five tabs: on a phone they wrap into two rows */
+.rack-tabs { flex-wrap: wrap; }
+.rack-tab { flex: 1 1 18%; }
+@media (max-width: 560px) { .rack-tab { flex: 1 1 30%; } }
+
+/* delay and reverb */
+.fx-pic { margin: 2px 0 8px; }
+.fx-pic canvas { display: block; width: 100%; height: 84px; border-radius: 10px; border: 1px solid var(--glass-line, var(--rule)); background: color-mix(in srgb, var(--paper) 55%, transparent); }
+#rk-dl.off .knobs, #rk-rv.off .knobs, #rk-dl.off .fx-pic, #rk-rv.off .fx-pic { opacity: .5; }
+
+/* granulator: the modulation header and its LFO lamp */
+.gr-lfo-h { display: inline-flex; align-items: center; gap: 8px; }
+.gr-lfo-dot { position: relative; width: 34px; height: 8px; border-radius: 4px; background: color-mix(in srgb, var(--graphite) 22%, transparent); --lfo: 0; }
+.gr-lfo-dot::after { content: ''; position: absolute; top: 1px; left: calc(50% - 3px + var(--lfo) * 13px); width: 6px; height: 6px; border-radius: 50%; background: color-mix(in srgb, var(--graphite) 55%, transparent); }
+.gr-lfo-dot.on::after { background: var(--k-lit); box-shadow: 0 0 6px var(--k-lit); }
+.grp > h4:has(.gr-lfo-h) { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }

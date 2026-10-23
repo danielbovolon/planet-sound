@@ -52,7 +52,9 @@ CREATE TABLE IF NOT EXISTS sounds (
   spec_key        TEXT,
   photo_key       TEXT,
   peaks           TEXT,
-  allow_download  INTEGER NOT NULL DEFAULT 0
+  allow_download  INTEGER NOT NULL DEFAULT 0,
+  trim_start      REAL,                                 -- the owner's chosen stretch (seconds); the file stays whole
+  trim_end        REAL
 );
 CREATE INDEX IF NOT EXISTS sounds_owner  ON sounds(owner_id);
 CREATE INDEX IF NOT EXISTS sounds_public ON sounds(visibility);

@@ -1,0 +1,56 @@
+/* Planet Sound — the start/end editor ("Edit recording" in the recorder, "Trim" on an entry). Loaded last. */
+dialog.trim-dlg { width: min(720px, calc(100% - 24px)); }
+.trim-dlg .sheet-body { padding-top: 0; }
+.trim-dlg .hint { margin: 0 0 12px; font-size: 13.5px; line-height: 1.45; }
+
+.trim-view {
+  position: relative; height: 150px; border-radius: 10px; overflow: hidden; touch-action: none; cursor: ew-resize;
+  border: 1px solid var(--glass-line, var(--rule)); background: color-mix(in srgb, var(--paper) 55%, transparent);
+  -webkit-user-select: none; user-select: none;
+}
+.trim-view .trim-spec { position: absolute; inset: 0; height: auto; border-radius: 0; }
+.trim-view .trim-wave { position: absolute; inset: 8px 0; width: 100%; height: calc(100% - 16px); }
+.trim-view [hidden] { display: none !important; }
+.trim-shade { position: absolute; top: 0; bottom: 0; left: 0; background: color-mix(in srgb, var(--paper) 72%, transparent); pointer-events: none;
+  background-image: repeating-linear-gradient(135deg, transparent 0 7px, color-mix(in srgb, var(--graphite) 16%, transparent) 7px 8px); }
+.trim-sel { position: absolute; top: 0; bottom: 0; border-top: 2px solid var(--signal); border-bottom: 2px solid var(--signal); cursor: grab; }
+.trim-sel:active { cursor: grabbing; }
+.trim-h { position: absolute; top: 0; bottom: 0; width: 36px; margin-left: -18px; cursor: ew-resize; outline: none; z-index: 2; }
+.trim-h::before { content: ''; position: absolute; top: 0; bottom: 0; left: 17px; width: 2px; background: var(--signal); }
+.trim-h span { position: absolute; top: 50%; left: 11px; width: 14px; height: 34px; margin-top: -17px; border-radius: 5px; background: var(--signal);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .3); }
+.trim-h span::after { content: ''; position: absolute; left: 4px; right: 4px; top: 11px; bottom: 11px; border-left: 1.5px solid #fff; border-right: 1.5px solid #fff; opacity: .85; }
+.trim-h:focus-visible span { box-shadow: 0 0 0 3px var(--sheet), 0 0 0 5px var(--focus); }
+.trim-head { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--ink); pointer-events: none; z-index: 1; }
+.trim-head[hidden] { display: none; }
+
+.trim-axis { position: relative; height: 18px; margin: 4px 0 0; font: 500 11px/1 var(--sans); color: var(--graphite); }
+.trim-axis span { position: absolute; top: 4px; transform: translateX(-50%); white-space: nowrap; }
+.trim-axis span:first-child { transform: none; }
+.trim-axis span::before { content: ''; position: absolute; left: 50%; top: -5px; width: 1px; height: 4px; background: var(--graphite); opacity: .6; }
+.trim-axis span:first-child::before { left: 0; }
+
+.trim-row { display: grid; grid-template-columns: 1fr auto 1fr; gap: 10px; align-items: end; margin-top: 10px; }
+.trim-t { display: grid; gap: 4px; font: 500 12.5px/1 var(--sans); color: var(--graphite); }
+.trim-t:last-child { text-align: right; }
+.trim-t input {
+  width: 100%; min-height: 40px; padding: 0 10px; border-radius: 8px; border: 1px solid var(--glass-line, var(--rule)); background: var(--glass-field, var(--sheet));
+  font: 600 16px/1 var(--sans); font-variant-numeric: tabular-nums; color: var(--ink);
+}
+.trim-t:last-child input { text-align: right; }
+.trim-play { min-width: 104px; gap: 8px; }
+.trim-play svg { width: 16px; height: 16px; fill: currentColor; }
+.trim-play.on { background: var(--signal); border-color: var(--signal); color: #fff; }
+.trim-len { margin: 12px 0 0; font: 500 14px/1.4 var(--sans); color: var(--ink); }
+.trim-dlg .s-msg { min-height: 1.2em; margin: 6px 0 0; }
+.trim-foot { margin-top: 14px; }
+.trim-foot #tr-reset { margin-right: auto; }
+.trim-foot #tr-reset[hidden] { display: none; }
+
+/* the recorder's review row: three choices */
+.review-row #s-edit { order: 0; }
+@media (max-width: 860px) {
+  .trim-view { height: 132px; }
+  .review-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .review-row #s-keep { grid-column: 1 / -1; }
+}

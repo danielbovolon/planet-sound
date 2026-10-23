@@ -16,6 +16,10 @@ const msf = v => (v < 10 ? `${v.toFixed(1)} ms` : v < 1000 ? `${Math.round(v)} m
 const pct = v => (v ? `${Math.round(v)} %` : 'Off');
 const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 const secf = v => `${v.toFixed(v < 10 ? 2 : 1)} s`;
+const WIN_NAMES = [['hann', 'Hann (soft)'], ['gauss', 'Gauss'], ['tri', 'Triangle'], ['trap', 'Trapezoid'], ['expo', 'Decay (hit)'], ['rexpo', 'Swell']];
+const PAN_NAMES = [['random', 'Random'], ['alt', 'Alternate L/R'], ['pos', 'By position'], ['pitch', 'By pitch']];
+const LFO_NAMES = [['sine', 'Sine'], ['tri', 'Triangle'], ['saw', 'Ramp'], ['square', 'Square'], ['random', 'Random steps'], ['drift', 'Drift']];
+const opts = list => list.map(([v, n]) => `<option value="${v}">${n}</option>`).join('');
 const SCALE_NAMES = [['free', 'Free (any pitch)'], ['chromatic', 'Chromatic'], ['major', 'Major'], ['minor', 'Minor'], ['pentatonic', 'Pentatonic'], ['minorpent', 'Minor pentatonic'], ['whole', 'Whole tone'], ['fifths', 'Fifths'], ['octaves', 'Octaves']];
 
 /**
@@ -41,7 +45,10 @@ export function initGrainUi({ host, player, chg, say }) {
     <div class="grp"><h4>Grains</h4><div class="knobs" id="gr-g1"></div></div>
     <div class="grp"><h4>Position</h4><div class="knobs" id="gr-g2"></div></div>
     <div class="grp"><h4>Pitch <label class="gr-scale">Scale <select id="gr-scale" aria-label="Quantise the random pitch to a scale">${SCALE_NAMES.map(([v, n]) => `<option value="${v}">${n}</option>`).join('')}</select></label></h4><div class="knobs three" id="gr-g3"></div></div>
-    <div class="grp"><h4>Shape · spread</h4><div class="knobs" id="gr-g4"></div></div>
+    <div class="grp"><h4>Window <label class="gr-scale">Type <select id="gr-win" aria-label="Grain window">${opts(WIN_NAMES)}</select></label></h4><div class="knobs" id="gr-g4"></div></div>
+    <div class="grp"><h4>Spread <label class="gr-scale">Mode <select id="gr-panm" aria-label="How the grains are placed left to right">${opts(PAN_NAMES)}</select></label></h4><div class="knobs" id="gr-g6"></div></div>
+    <div class="grp"><h4><span class="gr-lfo-h">Modulation <i class="gr-lfo-dot" id="gr-lfo-dot" aria-hidden="true"></i></span> <label class="gr-scale">LFO <select id="gr-lfosh" aria-label="LFO shape">${opts(LFO_NAMES)}</select></label></h4><div class="knobs" id="gr-g7"></div></div>
+    <div class="grp"><h4>Texture</h4><div class="knobs three" id="gr-g8"></div></div>
     <div class="grp"><h4>Output</h4><div class="knobs" id="gr-g5"></div></div>
     <div class="gr-foot"><button type="button" class="sw" id="gr-free" aria-pressed="false" title="Keep the granulator sounding when the recording is stopped, so you can shape a texture without the sound playing"><i class="lamp"></i>Free-running</button><span class="gr-read" id="gr-read"></span></div>`;
   const $ = s => host.querySelector(s);
@@ -57,6 +64,7 @@ export function initGrainUi({ host, player, chg, say }) {
   let presetIdx = '', presetSnap = null;   // the chosen preset stays shown for as long as the settings still match it
   K.rndSize = pctKnob('#gr-g1', 'rndSize', 'Size var', 'Random grain length: up to an octave longer or shorter.');
   K.jitter = pctKnob('#gr-g1', 'jitter', 'Time var', 'Classic only: how irregular the timing is.');
+  K.prob = kn('#gr-g1', { label: 'Chance', min: 0, max: 100, step: 1, value: 100, def: 100, origin: 100, format: v => (v >= 99.5 ? 'Always' : `${Math.round(v)} %`), hint: 'The chance that each grain sounds. Lower leaves gaps: sparse, rhythmic patterns.', onInput: v => chg('grain', d => { d.grain.prob = v / 100; }) });
   // Position
   K.pos = kn('#gr-g2', { label: 'Position', min: 0, max: 100, step: 0.5, value: 50, def: 50, origin: 0, format: v => `${Math.round(v)} %`, hint: 'Where in the buffer the grains are taken from. Live: 0 is the oldest, 100 the newest.', onInput: v => chg('grain', d => { d.grain.pos = v / 100; }) });
   K.spray = pctKnob('#gr-g2', 'spray', 'Spray', 'Random position: the grains are scattered around the Position.', 0.2);
@@ -66,11 +74,25 @@ export function initGrainUi({ host, player, chg, say }) {
   K.pitch = kn('#gr-g3', { label: 'Pitch', min: -36, max: 36, step: 0.1, value: 0, def: 0, origin: 0, detent: true, format: v => (v ? `${sign(v)}${Math.abs(v).toFixed(1)} st` : '0 st'), speech: v => `${v.toFixed(1)} semitones`, hint: 'Pitch of every grain, in semitones. Shift: fine steps.', onInput: v => chg('grain', d => { d.grain.pitch = v; }) });
   K.pSpray = kn('#gr-g3', { label: 'Pitch spray', min: 0, max: 24, step: 0.1, value: 0, def: 0, origin: 0, format: v => (v ? `±${v.toFixed(1)} st` : 'Off'), hint: 'Random pitch for each grain, up to this many semitones either way. Use Scale to make it musical.', onInput: v => chg('grain', d => { d.grain.pSpray = v; }) });
   K.rev = pctKnob('#gr-g3', 'rev', 'Reverse', 'How many grains are played backwards.');
+  K.glide = kn('#gr-g3', { label: 'Glide', min: -24, max: 24, step: 0.1, value: 0, def: 0, origin: 0, detent: true, format: v => (v ? `${sign(v)}${Math.abs(v).toFixed(1)} st` : 'Off'), hint: 'Each grain bends in pitch while it plays: up (chirps) or down (falling).', onInput: v => chg('grain', d => { d.grain.glide = v; }) });
+  K.gSpray = kn('#gr-g3', { label: 'Glide spray', min: 0, max: 24, step: 0.1, value: 0, def: 0, origin: 0, format: v => (v ? `±${v.toFixed(1)} st` : 'Off'), hint: 'A random bend for each grain, up to this much either way.', onInput: v => chg('grain', d => { d.grain.gSpray = v; }) });
   // Shape / spread
   K.smooth = kn('#gr-g4', { label: 'Shape', min: 0, max: 100, step: 1, value: 100, def: 100, origin: 0, format: v => (v >= 99.5 ? 'Soft' : v <= 0.5 ? 'Hard' : `${Math.round(v)} %`), hint: 'The edges of each grain: soft is smooth, hard is a click.', onInput: v => chg('grain', d => { d.grain.smooth = v / 100; }) });
   K.tilt = kn('#gr-g4', { label: 'Tilt', min: -100, max: 100, step: 1, value: 0, def: 0, origin: 0, detent: true, format: v => (v ? `${sign(v)}${Math.abs(Math.round(v))} %` : 'Centre'), hint: 'Where the grain peaks. Left: a hit and a tail. Right: a swell and a cut.', onInput: v => chg('grain', d => { d.grain.tilt = v / 100; }) });
-  K.pan = pctKnob('#gr-g4', 'pan', 'Pan spread', 'Each grain at a random place between left and right.', 0.4);
-  K.amp = pctKnob('#gr-g4', 'amp', 'Level spread', 'Each grain at a random level.');
+  K.pan = pctKnob('#gr-g6', 'pan', 'Pan', 'How far left and right the grains go. Pan sets how: at random, alternating, by where in the buffer they come from, or by their pitch (higher to the right).', 0.4);
+  K.amp = pctKnob('#gr-g6', 'amp', 'Level', 'Each grain at a random level.');
+  // modulation
+  const depth = (key, label, hint) => kn('#gr-g7', { label, min: -100, max: 100, step: 1, value: 0, def: 0, origin: 0, detent: true, format: v => (v ? `${sign(v)}${Math.abs(Math.round(v))} %` : 'Off'), hint, onInput: v => chg('grain', d => { d.grain[key] = v / 100; }) });
+  K.lfoRate = kn('#gr-g7', { label: 'Rate', min: 0.02, max: 20, scale: 'log', steps: 160, value: 0.5, def: 0.5, origin: 0.02, round: v => +v.toPrecision(2), format: v => (v < 1 ? `${v.toFixed(2)} Hz` : `${v.toFixed(1)} Hz`), hint: 'Speed of the LFO. Below 0.1 Hz it takes longer than ten seconds to go round.', onInput: v => chg('grain', d => { d.grain.lfoRate = v; }) });
+  K.lfoPos = depth('lfoPos', '→ Position', 'The LFO moves where the grains are taken from.');
+  K.lfoPitch = kn('#gr-g7', { label: '→ Pitch', min: -24, max: 24, step: 0.1, value: 0, def: 0, origin: 0, detent: true, format: v => (v ? `${sign(v)}${Math.abs(v).toFixed(1)} st` : 'Off'), hint: 'The LFO moves the pitch of new grains, up to this many semitones.', onInput: v => chg('grain', d => { d.grain.lfoPitch = v; }) });
+  K.lfoSize = depth('lfoSize', '→ Size', 'The LFO makes the grains longer and shorter, up to two octaves.');
+  K.lfoDens = depth('lfoDens', '→ Density', 'The LFO makes the grains come faster and slower.');
+  K.lfoCut = depth('lfoCut', '→ Filter', 'The LFO sweeps the low-pass of the grains (from the Low-pass setting, or from 18 kHz if it is off).');
+  // texture
+  K.fb = kn('#gr-g8', { label: 'Feedback', min: 0, max: 95, step: 1, value: 0, def: 0, origin: 0, format: pct, hint: 'Live source: the grains are fed back into the buffer, so they are grained again and again. Evolving, self-similar textures.', onInput: v => chg('grain', d => { d.grain.fb = v / 100; }) });
+  K.bits = kn('#gr-g8', { label: 'Bits', min: 4, max: 24, step: 1, value: 24, def: 24, origin: 24, format: v => (v >= 24 ? 'Off' : `${Math.round(v)} bit`), hint: 'Fewer bits: a grainier, noisier, digital sound.', onInput: v => chg('grain', d => { d.grain.bits = v; }) });
+  K.down = kn('#gr-g8', { label: 'Rate ÷', min: 1, max: 32, scale: 'log', steps: 60, value: 1, def: 1, origin: 1, round: v => Math.round(v), format: v => (v <= 1 ? 'Off' : `÷ ${Math.round(v)}`), hint: 'Sample-rate reduction: aliasing, metallic, lo-fi.', onInput: v => chg('grain', d => { d.grain.down = v; }) });
   // Output
   K.mix = kn('#gr-g5', { label: 'Dry / Wet', min: 0, max: 100, step: 1, value: 50, def: 50, origin: 0, format: v => (v <= 0 ? 'Dry' : v >= 100 ? 'Wet' : `${Math.round(v)} % wet`), speech: v => `${Math.round(v)} percent wet`, hint: 'Dry is the sound after Tape and Multiband. Wet is the grains.', onInput: v => chg('grain', d => { d.grain.mix = v / 100; }) });
   K.level = kn('#gr-g5', { label: 'Level', min: -24, max: 12, step: 0.5, value: 0, def: 0, origin: 0, format: dbf, hint: 'Level of the grains.', onInput: v => chg('grain', d => { d.grain.level = v; }) });
@@ -85,6 +107,9 @@ export function initGrainUi({ host, player, chg, say }) {
   $('#gr-freeze').addEventListener('click', () => chg('grain', d => { d.grain.freeze = !d.grain.freeze; }));
   $('#gr-free').addEventListener('click', () => chg('grain', d => { d.grain.free = !d.grain.free; }));
   $('#gr-scale').addEventListener('change', e => chg('grain', d => { d.grain.scale = e.target.value; }));
+  $('#gr-win').addEventListener('change', e => chg('grain', d => { d.grain.win = e.target.value; }));
+  $('#gr-panm').addEventListener('change', e => chg('grain', d => { d.grain.panMode = e.target.value; }));
+  $('#gr-lfosh').addEventListener('change', e => chg('grain', d => { d.grain.lfoShape = e.target.value; }));
 
   /* ---------------- drawing ---------------- */
   const bufCv = $('#gr-buf-cv'), overCv = $('#gr-over'), overBox = $('#gr-over-box');
@@ -157,6 +182,8 @@ export function initGrainUi({ host, player, chg, say }) {
         g.fillStyle = signal; g.fillRect(x0 - 1, 0, 3, h); g.fillRect(x1 - 2, 0, 3, h);
       }
     }
+    const dot = $('#gr-lfo-dot'), lfoUsed = ['lfoPos', 'lfoPitch', 'lfoSize', 'lfoDens', 'lfoCut'].some(k => Math.abs(p[k]) > 0.004);
+    if (dot) { dot.classList.toggle('on', lfoUsed && p.on); dot.style.setProperty('--lfo', live && lfoUsed ? String(live.lfo || 0) : '0'); }
     $('#gr-capl').textContent = p.src === 'region' ? secf(p.rStart) : '';
     $('#gr-capr').textContent = p.src === 'region' ? secf(p.rStart + p.rLen) : (p.freeze ? 'frozen' : '');
   }
@@ -210,6 +237,12 @@ export function initGrainUi({ host, player, chg, say }) {
     K.pitch.set(g.pitch, false); K.pSpray.set(g.pSpray, false); K.rev.set(g.rev * 100, false);
     K.smooth.set(g.smooth * 100, false); K.tilt.set(g.tilt * 100, false); K.pan.set(g.pan * 100, false); K.amp.set(g.amp * 100, false);
     K.mix.set(g.mix * 100, false); K.level.set(g.level, false); K.hp.set(g.hp, false); K.lp.set(g.lp, false);
+    K.prob.set(g.prob * 100, false); K.glide.set(g.glide, false); K.gSpray.set(g.gSpray, false);
+    K.lfoRate.set(g.lfoRate, false); K.lfoPos.set(g.lfoPos * 100, false); K.lfoPitch.set(g.lfoPitch, false); K.lfoSize.set(g.lfoSize * 100, false); K.lfoDens.set(g.lfoDens * 100, false); K.lfoCut.set(g.lfoCut * 100, false);
+    K.fb.set(g.fb * 100, false); K.bits.set(g.bits, false); K.down.set(g.down, false);
+    K.tilt.disable(g.win === 'expo' || g.win === 'rexpo', 'Not for this window type');
+    $('#gr-win').value = g.win; $('#gr-panm').value = g.panMode; $('#gr-lfosh').value = g.lfoShape;
+    K.fb.disable(g.src !== 'live' || g.freeze, g.src !== 'live' ? 'Live source only' : 'Not while frozen');
     $('#gr-on').setAttribute('aria-pressed', String(g.on)); $('#gr-on .lamp').classList.toggle('on', g.on);
     host.querySelectorAll('#gr-mode button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.m === g.mode)));
     host.querySelectorAll('#gr-src button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.s === g.src)));

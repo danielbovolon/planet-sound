@@ -102,6 +102,20 @@ export function parseWav(ab) {
   return fmt && data ? { fmt, data } : null;
 }
 
+/** Sample rate and frame size of a parsed WAV. */
+export function wavInfo(w) {
+  const dv = new DataView(w.fmt.buffer, w.fmt.byteOffset, w.fmt.byteLength);
+  const channels = dv.getUint16(2, true), rate = dv.getUint32(4, true), align = dv.getUint16(12, true) || 1;
+  return { channels, rate, align, frames: Math.floor(w.data.length / align) };
+}
+/** The same WAV with only the stretch from `start` to `end` (seconds) kept, and new name/description chunks.
+ *  The audio bytes inside the stretch are carried over untouched. */
+export function cutWav(ab, start, end, meta) {
+  const w = parseWav(ab); if (!w) return null;
+  const { rate, align, frames } = wavInfo(w);
+  const a = Math.max(0, Math.min(frames - 1, Math.round(start * rate))), b = Math.max(a + 1, Math.min(frames, Math.round(end * rate)));
+  return assemble(w.fmt, w.data.subarray(a * align, b * align), meta);
+}
 /** An existing WAV with new name/description chunks. The audio bytes are carried over untouched. */
 export function rewriteWav(ab, meta) {
   const w = parseWav(ab);

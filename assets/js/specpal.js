@@ -29,7 +29,7 @@ export function next() {
   const p = PALETTES[(currentIndex() + 1) % PALETTES.length];
   prefs.set(KEY, p.id);
   document.documentElement.dataset.specPal = p.id;
-  painted.forEach((url, el) => paint(el, url));
+  painted.forEach((v, el) => paint(el, v.url, v.crop));
   return p;
 }
 document.documentElement.dataset.specPal = current().id;
@@ -57,7 +57,7 @@ export function lut(p = current(), { ink, bg } = {}) {
 }
 
 const cache = new Map();          // `${url}|${palette}` -> object URL of the coloured picture
-const painted = new Map();        // element -> spectrogram URL it shows
+const painted = new Map();        // element -> { url, crop } it shows
 async function bitmap(url) {
   const r = await fetch(url); if (!r.ok) throw new Error('spectrogram');
   return createImageBitmap(await r.blob());
@@ -73,11 +73,19 @@ export async function colourCanvas(url, p = current(), opts) {
   return cv;
 }
 
-/** Show the spectrogram at `url` in element `el` (a .sono-img) in the current palette. */
-export async function paint(el, url) {
+/** Show part of the picture: crop = { s0, w } as fractions of the width (a trimmed entry). */
+function cropStyle(el, crop) {
+  const size = crop && crop.w < 0.9999 ? `${100 / crop.w}% 100%` : '100% 100%';
+  const pos = crop && crop.w < 0.9999 ? `${(crop.s0 / (1 - crop.w)) * 100}% 0%` : '0% 0%';
+  el.style.webkitMaskSize = el.style.maskSize = size; el.style.webkitMaskPosition = el.style.maskPosition = pos;
+  el.style.backgroundSize = size; el.style.backgroundPosition = pos;
+}
+/** Show the spectrogram at `url` in element `el` (a .sono-img) in the current palette, optionally only a stretch of it. */
+export async function paint(el, url, crop) {
   if (!el) return;
-  if (!url) { painted.delete(el); el.classList.remove('heat'); el.style.backgroundImage = ''; el.style.webkitMaskImage = el.style.maskImage = ''; return; }
-  painted.set(el, url);
+  if (!url) { painted.delete(el); el.classList.remove('heat'); el.style.backgroundImage = ''; el.style.webkitMaskImage = el.style.maskImage = ''; cropStyle(el, null); return; }
+  painted.set(el, { url, crop: crop || null });
+  cropStyle(el, crop);
   const p = current();
   if (p.kind === 'ink') {
     // the ink palette prints through a mask, so it follows light and dark themes by itself
@@ -94,7 +102,7 @@ export async function paint(el, url) {
       cache.set(key, out);
     } catch { return; }
   }
-  if (painted.get(el) !== url || current().id !== p.id) return;   // something newer is on screen
+  const now = painted.get(el); if (!now || now.url !== url || current().id !== p.id) return;   // something newer is on screen
   el.style.webkitMaskImage = el.style.maskImage = 'none';
   el.style.backgroundImage = `url("${out}")`;
   el.classList.add('heat');

@@ -168,11 +168,12 @@ export async function importFile(file, onProgress) {
 async function parseWavHeader(file) {
   const buf = await file.slice(0, Math.min(file.size, 1 << 20)).arrayBuffer();
   const dv = new DataView(buf);
-  let p = 12, fmt = null, dataStart = -1, dataLen = 0;
+  let p = 12, fmt = null, dataStart = -1, dataLen = 0, fmtAt = -1, fmtLen = 0;
   while (p + 8 <= dv.byteLength) {
     const id = String.fromCharCode(dv.getUint8(p), dv.getUint8(p + 1), dv.getUint8(p + 2), dv.getUint8(p + 3));
     const len = dv.getUint32(p + 4, true);
     if (id === 'fmt ') {
+      fmtAt = p; fmtLen = len;
       let format = dv.getUint16(p + 8, true);
       const channels = dv.getUint16(p + 10, true), sampleRate = dv.getUint32(p + 12, true);
       const blockAlign = dv.getUint16(p + 20, true), bits = dv.getUint16(p + 22, true);
@@ -187,7 +188,7 @@ async function parseWavHeader(file) {
   if (!fmt || dataStart < 0) throw new Error('This WAV file has no readable audio data.');
   if (!((fmt.format === 1 && [16, 24, 32].includes(fmt.bits)) || (fmt.format === 3 && fmt.bits === 32)))
     throw new Error(`Unsupported WAV encoding (${fmt.bits}-bit, format ${fmt.format}). Export as 16- or 24-bit PCM.`);
-  return { ...fmt, dataStart, dataLen };
+  return { ...fmt, dataStart, dataLen, fmtAt, fmtLen };
 }
 
 async function importWav(file, onProgress) {
@@ -196,11 +197,21 @@ async function importWav(file, onProgress) {
   const outBits = h.format === 1 && h.bits === 16 ? 16 : 24;
   const worker = new Worker(new URL('./take-worker.js', here), { type: 'module' });
   worker.postMessage({ type: 'init', sampleRate: h.sampleRate, channels, bits: outBits, format: 'wav' });
-  const frameBytes = h.blockAlign, bps = h.bits / 8;
-  const chunkFrames = 65536;
-  const total = Math.floor(h.dataLen / frameBytes);
-  for (let f = 0; f < total; f += chunkFrames) {
-    const n = Math.min(chunkFrames, total - f);
+  await pumpWav(file, h, channels, 0, Math.floor(h.dataLen / h.blockAlign), worker, onProgress);
+  const res = await new Promise(r => { worker.onmessage = e => { if (e.data.type === 'done') r(e.data); }; worker.postMessage({ type: 'finish' }); });
+  worker.terminate();
+  return packResult({
+    master: res.blob, mime: 'audio/wav', ext: 'wav',
+    tech: { codec: 'WAV', lossless: true, sampleRate: h.sampleRate, bitDepth: outBits, channels, source: 'imported', convertedFrom: 'WAV' },
+    analysis: res.analysis, recordedAt: file.lastModified ? new Date(file.lastModified) : null,
+  });
+}
+
+/** Read frames [from, to) of a WAV file in chunks and hand them to a take worker as floats. */
+async function pumpWav(file, h, channels, from, to, worker, onProgress) {
+  const frameBytes = h.blockAlign, bps = h.bits / 8, chunkFrames = 65536, total = to - from;
+  for (let f = from; f < to; f += chunkFrames) {
+    const n = Math.min(chunkFrames, to - f);
     const ab = await file.slice(h.dataStart + f * frameBytes, h.dataStart + (f + n) * frameBytes).arrayBuffer();
     const dv = new DataView(ab);
     const chs = Array.from({ length: channels }, () => new Float32Array(n));
@@ -217,15 +228,58 @@ async function importWav(file, onProgress) {
       }
     }
     worker.postMessage({ type: 'data', chs }, chs.map(c => c.buffer));
-    if (onProgress) onProgress({ fraction: (f + n) / total });
+    if (onProgress) onProgress({ fraction: (f + n - from) / total });
   }
-  const res = await new Promise(r => { worker.onmessage = e => { if (e.data.type === 'done') r(e.data); }; worker.postMessage({ type: 'finish' }); });
-  worker.terminate();
-  return packResult({
-    master: res.blob, mime: 'audio/wav', ext: 'wav',
-    tech: { codec: 'WAV', lossless: true, sampleRate: h.sampleRate, bitDepth: outBits, channels, source: 'imported', convertedFrom: 'WAV' },
-    analysis: res.analysis, recordedAt: file.lastModified ? new Date(file.lastModified) : null,
-  });
+}
+
+/**
+ * Cut a take to the stretch from `start` to `end` (seconds), before it is published. What is cut away is gone.
+ * A WAV master is cut exactly: the audio bytes that are kept are not touched. Anything else (an imported MP3, say) is
+ * decoded and kept as a 24-bit WAV. Either way the take is measured again: loudness, peak, background, spectrogram.
+ */
+export async function trimTake(take, start, end, onProgress) {
+  const shifted = take.recordedAt ? new Date(Date.parse(take.recordedAt) + start * 1000) : null;
+  let res;
+  if (take.mime === 'audio/wav') {
+    const h = await parseWavHeader(take.master), channels = Math.min(h.channels, 8), total = Math.floor(h.dataLen / h.blockAlign);
+    const a = Math.max(0, Math.min(total - 1, Math.round(start * h.sampleRate))), b = Math.max(a + 1, Math.min(total, Math.round(end * h.sampleRate)));
+    const dataLen = (b - a) * h.blockAlign, fmt = take.master.slice(h.fmtAt, h.fmtAt + 8 + h.fmtLen + (h.fmtLen & 1));
+    const head = new DataView(new ArrayBuffer(12)), dh = new DataView(new ArrayBuffer(8));
+    [0x52, 0x49, 0x46, 0x46].forEach((v, i) => head.setUint8(i, v)); head.setUint32(4, 4 + fmt.size + 8 + dataLen + (dataLen & 1), true);
+    [0x57, 0x41, 0x56, 0x45].forEach((v, i) => head.setUint8(8 + i, v));
+    [0x64, 0x61, 0x74, 0x61].forEach((v, i) => dh.setUint8(i, v)); dh.setUint32(4, dataLen, true);
+    const parts = [head.buffer, fmt, dh.buffer, take.master.slice(h.dataStart + a * h.blockAlign, h.dataStart + b * h.blockAlign)];
+    if (dataLen & 1) parts.push(new Uint8Array(1));
+    const master = new Blob(parts, { type: 'audio/wav' });
+    const worker = new Worker(new URL('./take-worker.js', here), { type: 'module' });
+    worker.postMessage({ type: 'init', sampleRate: h.sampleRate, channels, encode: false });
+    await pumpWav(take.master, h, channels, a, b, worker, onProgress);
+    const r = await new Promise(ok => { worker.onmessage = e => { if (e.data.type === 'done') ok(e.data); }; worker.postMessage({ type: 'finish' }); });
+    worker.terminate();
+    res = await packResult({ master, mime: 'audio/wav', ext: 'wav', tech: { ...take.tech }, analysis: r.analysis, recordedAt: shifted });
+  } else {
+    const AC = window.AudioContext || window.webkitAudioContext, rate = take.tech && take.tech.sampleRate;
+    let ctx; try { ctx = rate ? new AC({ sampleRate: rate }) : new AC(); } catch { ctx = new AC(); }   // decode at the file's own rate
+    let buf;
+    try { buf = await ctx.decodeAudioData(await take.master.arrayBuffer()); } finally { ctx.close().catch(() => {}); }
+    const channels = Math.min(buf.numberOfChannels, 8), a = Math.max(0, Math.round(start * buf.sampleRate)), b = Math.max(a + 1, Math.min(buf.length, Math.round(end * buf.sampleRate)));
+    const worker = new Worker(new URL('./take-worker.js', here), { type: 'module' });
+    worker.postMessage({ type: 'init', sampleRate: buf.sampleRate, channels, bits: 24, format: 'wav' });
+    for (let o = a; o < b; o += 65536) {
+      const chs = Array.from({ length: channels }, (_, c) => buf.getChannelData(c).slice(o, Math.min(b, o + 65536)));
+      worker.postMessage({ type: 'data', chs }, chs.map(c => c.buffer));
+      if (onProgress) onProgress({ fraction: (o - a) / (b - a) });
+    }
+    const r = await new Promise(ok => { worker.onmessage = e => { if (e.data.type === 'done') ok(e.data); }; worker.postMessage({ type: 'finish' }); });
+    worker.terminate();
+    res = await packResult({
+      master: r.blob, mime: 'audio/wav', ext: 'wav',
+      tech: { ...take.tech, codec: 'WAV', bitDepth: 24, sampleRate: buf.sampleRate, channels, convertedFrom: take.tech.codec },
+      analysis: r.analysis, recordedAt: shifted,
+    });
+  }
+  if (take.fileName) res.fileName = take.fileName;
+  return res;
 }
 
 function flacInfo(u8) {

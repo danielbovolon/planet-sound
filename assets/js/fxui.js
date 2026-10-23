@@ -1,4 +1,4 @@
-/* Planet Sound — "Sound shaping" panel inside the sound panel: Tape and Multiband.
+/* Planet Sound — "Sound shaping" panel inside the sound panel: Tape, Multiband, Granulator, Delay, Reverb.
  *
  * Every control changes fxState (fx.js). The player plays through the effects while any of it is on,
  * and Export WAV / Export spectrogram render the same settings over the whole recording.
@@ -6,6 +6,7 @@
  */
 import { createKnob } from './knobs.js';
 import { initGrainUi } from './grainui.js';
+import { initSpaceUi } from './spaceui.js';
 let tpPre = { i: '', snap: null }, mbPre = { i: '', snap: null };   // the chosen preset stays shown while the settings still match it
 import { fxState, loadDsp, TAPE_PRESETS, MB_PRESETS, applyTapePreset, applyMbPreset } from './fx.js';
 
@@ -173,8 +174,10 @@ export async function initFxUi({ player, toast }) {
   const grEl = $('#rk-gr');
   const grain = initGrainUi({ host: grEl, player, chg, say });
   player.onFxBake = s => grain.onBake(s);
-  const tabBtns = [$('#tab-tape'), $('#tab-mb'), $('#tab-gr')], panes = [tapeEl, mbEl, grEl];
-  function showTab(i) { tabBtns.forEach((b, k) => b.setAttribute('aria-selected', String(k === i))); panes.forEach((p, k) => { p.hidden = k !== i; }); if (i === 1) { sizeCanvases(); drawStrip(); drawCurve(); } if (i === 2) grain.draw(); }
+  const dlEl = $('#rk-dl'), rvEl = $('#rk-rv');
+  const space = initSpaceUi({ dlHost: dlEl, rvHost: rvEl, chg });
+  const tabBtns = [$('#tab-tape'), $('#tab-mb'), $('#tab-gr'), $('#tab-dl'), $('#tab-rv')], panes = [tapeEl, mbEl, grEl, dlEl, rvEl];
+  function showTab(i) { tabBtns.forEach((b, k) => b.setAttribute('aria-selected', String(k === i))); panes.forEach((p, k) => { p.hidden = k !== i; }); if (i === 1) { sizeCanvases(); drawStrip(); drawCurve(); } if (i === 2) grain.draw(); if (i >= 3) space.draw(); }
   tabBtns.forEach((b, i) => b.addEventListener('click', () => showTab(i)));
 
   /* ---------------- state → controls ---------------- */
@@ -206,10 +209,11 @@ export async function initFxUi({ player, toast }) {
     $$('#mb-knee button').forEach(b => b.setAttribute('aria-pressed', String((b.dataset.k === '1') === m.knee)));
     syncBands(p);
     $('#lamp-tape').classList.toggle('on', t.on); $('#lamp-mb').classList.toggle('on', m.on); $('#lamp-gr').classList.toggle('on', p.grain.on);
-    grain.sync(p); grEl.classList.toggle('off', !p.grain.on);
+    $('#lamp-dl').classList.toggle('on', p.delay.on); $('#lamp-rv').classList.toggle('on', p.verb.on);
+    grain.sync(p); grEl.classList.toggle('off', !p.grain.on); space.sync(p);
     $('#rk-safe').checked = p.safe;
     tapeEl.classList.toggle('off', !t.on); mbEl.classList.toggle('off', !m.on);
-    const parts = []; if (t.on) parts.push('Tape'); if (m.on) parts.push('Multiband'); if (p.grain.on) parts.push('Granulator'); if (p.speed !== 1) parts.push(`${Math.round(p.speed * 100)} % speed`);
+    const parts = []; if (t.on) parts.push('Tape'); if (m.on) parts.push('Multiband'); if (p.grain.on) parts.push('Granulator'); if (p.delay.on) parts.push('Delay'); if (p.verb.on) parts.push('Reverb'); if (p.speed !== 1) parts.push(`${Math.round(p.speed * 100)} % speed`);
     stateEl.textContent = parts.length ? parts.join(' + ') : 'Off'; stateEl.classList.toggle('live', parts.length > 0);
     box.dataset.shaped = parts.length ? '1' : '';
     $('#tp-pre').value = tpPre.snap && tapeSnap(p) === tpPre.snap ? tpPre.i : '';
@@ -309,7 +313,7 @@ export async function initFxUi({ player, toast }) {
   let raf = 0;
   function tick() { raf = 0; if (!box.open || (mbEl.hidden && grEl.hidden)) return; if (!mbEl.hidden) { drawStrip(); drawCurve(); } else grain.draw(); raf = requestAnimationFrame(tick); }
   function startTick() { if (!raf && box.open && (!mbEl.hidden || !grEl.hidden)) raf = requestAnimationFrame(tick); }
-  addEventListener('resize', () => { sizeCanvases(); drawStrip(); drawCurve(); grain.resize(); });
+  addEventListener('resize', () => { sizeCanvases(); drawStrip(); drawCurve(); grain.resize(); space.draw(); });
 
   /* ---------------- hooking the player ---------------- */
   function apply(p) {
@@ -326,7 +330,7 @@ export async function initFxUi({ player, toast }) {
     else say(player.fxError || 'Live preview isn’t available here. Export still works.', true);
   }
   fxState.subscribe(p => { sync(p); apply(p); });
-  box.addEventListener('toggle', () => { if (box.open) { sizeCanvases(); drawStrip(); drawCurve(); startTick(); if (!player.fxPrep) prepare(); } else if (raf) { cancelAnimationFrame(raf); raf = 0; } });
+  box.addEventListener('toggle', () => { if (box.open) { sizeCanvases(); drawStrip(); drawCurve(); space.draw(); startTick(); if (!player.fxPrep) prepare(); } else if (raf) { cancelAnimationFrame(raf); raf = 0; } });
   rack.addEventListener('pointerdown', () => { if (player.sound && !player.fxPrep) prepare(); }, { capture: true });   // inside a tap: iPhone only starts audio from one
   tabBtns[1].addEventListener('click', startTick); tabBtns[2].addEventListener('click', startTick);
 
@@ -344,6 +348,8 @@ export async function initFxUi({ player, toast }) {
     },
     /** True if anything is switched on or changed: the export then renders it. */
     shaped() { return !fxState.neutral(); },
+    /** The same entry was loaded again (after a trim): start the live preview again if anything is switched on. */
+    refresh() { if (!fxState.neutral() && player.sound) prepare(); },
     close() { box.open = false; },
   };
 }

@@ -25,6 +25,8 @@ export async function decodeAudio(ab, rate) {
 export async function shapedChannels(ab, sound, onProgress) {
   const buf = await decodeAudio(ab, sound.tech && sound.tech.sampleRate);
   let chs = Array.from({ length: Math.min(buf.numberOfChannels, 8) }, (_, c) => buf.getChannelData(c));
+  const t = sound.trim;                                          // a trimmed entry: only its stretch
+  if (t && t.end > t.start) { const a = Math.max(0, Math.round(t.start * buf.sampleRate)), b = Math.min(buf.length, Math.round(t.end * buf.sampleRate)); if (b - a > 64) chs = chs.map(c => c.subarray(a, b)); }
   if (!fxState.neutral()) chs = await renderFx(chs, buf.sampleRate, fxState.get(), onProgress);
   return { chs, rate: buf.sampleRate };
 }

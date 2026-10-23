@@ -168,7 +168,19 @@ async function authSignOut(req, env) {
 
 /* ---------------- sounds ---------------- */
 const LIST_COLS = `seq, id, owner_id, visibility, title, tags, lat, lng, place, recorded_at, created_at, credit, duration,
-  codec, lossless, sample_rate, bit_depth, channels, lufs, audio_key, spec_key, photo_key, allow_download`;
+  codec, lossless, sample_rate, bit_depth, channels, lufs, audio_key, spec_key, photo_key, allow_download, trim_start, trim_end`;
+
+/* The trim columns (added October 2026) are created by the Worker itself the first time it runs, so no manual
+   database step is needed. Adding a column that is already there fails harmlessly. */
+let schemaReady = null;
+function ensureSchema(env) {
+  if (!schemaReady) schemaReady = (async () => {
+    for (const sql of ['ALTER TABLE sounds ADD COLUMN trim_start REAL', 'ALTER TABLE sounds ADD COLUMN trim_end REAL']) {
+      try { await env.DB.prepare(sql).run(); } catch (e) { if (!/duplicate column/i.test(String(e && e.message))) console.warn('schema', e && e.message); }
+    }
+  })();
+  return schemaReady;
+}
 
 function shapeSound(r, me, full = false) {
   const s = {
@@ -181,6 +193,7 @@ function shapeSound(r, me, full = false) {
     photo: r.photo_key ? '/media/' + r.photo_key : null,
     allowDownload: !!r.allow_download,
     mine: !!(me && r.owner_id === me.id),
+    trim: r.trim_start != null && r.trim_end != null && r.trim_end > r.trim_start ? { start: r.trim_start, end: r.trim_end } : null,
   };
   if (full) {
     s.equipment = r.equipment; s.updatedAt = r.updated_at;
@@ -279,10 +292,19 @@ async function createSound(req, env) {
 
 async function updateSound(req, env, id) {
   const me = await currentUser(req, env);
-  const r = await env.DB.prepare('SELECT id, owner_id, photo_key FROM sounds WHERE id = ?').bind(id).first();
+  const r = await env.DB.prepare('SELECT id, owner_id, photo_key, duration FROM sounds WHERE id = ?').bind(id).first();
   if (!r || r.owner_id !== me.id) fail(404, 'Only the person who recorded this can change it.');
   const b = await body(req);
   const f = readFields(b, true);
+  // Trim: the stretch to play. Nothing is cut from the file; null shows the whole recording again.
+  if ('trimStart' in b || 'trimEnd' in b) {
+    if (b.trimStart == null && b.trimEnd == null) { f.trim_start = null; f.trim_end = null; }
+    else {
+      const dur = r.duration || 86400, s = num(b.trimStart, 0, dur), e = num(b.trimEnd, 0, dur);
+      if (s === null || e === null || e - s < 0.2) fail(400, 'The trimmed stretch must be at least 0.2 seconds long and inside the recording.');
+      f.trim_start = Math.round(s * 1000) / 1000; f.trim_end = Math.round(e * 1000) / 1000;
+    }
+  }
   let oldPhoto = null;
   if ('audioKey' in b) {
     const a = await ownUpload(env, me, b.audioKey, 'audio');
@@ -496,7 +518,7 @@ export default {
     const cors = corsHeaders(req, env);
     if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
     let res;
-    try { res = await route(req, env, url); }
+    try { await ensureSchema(env); res = await route(req, env, url); }
     catch (e) {
       const status = e instanceof HttpError ? e.status : 500;
       if (status === 500) console.error(e && e.stack || e);

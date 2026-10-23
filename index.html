@@ -27,6 +27,7 @@
 <link rel="stylesheet" href="assets/css/nobox.css">
 <link rel="stylesheet" href="assets/css/finish.css">
 <link rel="stylesheet" href="assets/css/update5.css">
+<link rel="stylesheet" href="assets/css/trim.css">
 <script src="config.js"></script>
 </head>
 <body>
@@ -126,9 +127,9 @@
       <p>Recordings made here are captured without the phone’s voice processing and stored losslessly as 24-bit WAV, with a broadcast (BWF) header carrying title, place and date. Each entry has its own catalogue card: where and when, who recorded it and with what, and the measured facts of the file — sample rate, bit depth, loudness, peak and the background level of the place.</p>
       <p>Playback is level-matched, so moving between a quiet forest and a loud market doesn’t throw you. The stored file is never altered.</p>
       <h2>Listening</h2>
-      <p>Every entry can be looped, played full screen, and controlled from a second player further down the card, so you never have to scroll back up to rewind. <em>Sound shaping</em> lets you reshape what you hear — Tape, a three-band Multiband and a Granulator — and export the result as a WAV or spectrogram where downloads are allowed. It changes your copy only; the original stays as recorded.</p>
+      <p>Every entry can be looped, played full screen, and controlled from a second player further down the card, so you never have to scroll back up to rewind. <em>Sound shaping</em> lets you reshape what you hear — Tape, a three-band Multiband, a Granulator, Delay and Reverb — and export the result as a WAV or spectrogram where downloads are allowed. It changes your copy only; the original stays as recorded.</p>
       <h2>Taking part</h2>
-      <p>You don’t need an account to listen. To record and publish, sign in with your email and a password; one account holds all your recordings on every device. Your email is used only to sign in. You choose, per recording, whether it joins the public map or stays private, and whether others may download the original. You can edit or remove your own recordings at any time.</p>
+      <p>You don’t need an account to listen. To record and publish, sign in with your email and a password; one account holds all your recordings on every device. Your email is used only to sign in. You choose, per recording, whether it joins the public map or stays private, and whether others may download the original. You can edit, trim or remove your own recordings at any time; trimming only hides what is outside, so it can always be brought back.</p>
       <p>No signal in the field? Record anyway. Recordings wait on your phone and upload by themselves when you’re back online.</p>
       <h2>On your phone</h2>
       <p>Add Planet Sound to your home screen: on iPhone, open it in Safari, tap Share and choose <em>Add to Home Screen</em>; on Android, open it in Chrome and choose <em>Install app</em>. It then opens full screen.</p>
@@ -196,10 +197,14 @@
           <button type="button" class="rack-tab" role="tab" id="tab-tape" aria-selected="true" aria-controls="rk-tape"><i class="lamp" id="lamp-tape"></i>Tape</button>
           <button type="button" class="rack-tab" role="tab" id="tab-mb" aria-selected="false" aria-controls="rk-mb"><i class="lamp" id="lamp-mb"></i>Multiband</button>
           <button type="button" class="rack-tab" role="tab" id="tab-gr" aria-selected="false" aria-controls="rk-gr"><i class="lamp" id="lamp-gr"></i>Granulator</button>
+          <button type="button" class="rack-tab" role="tab" id="tab-dl" aria-selected="false" aria-controls="rk-dl"><i class="lamp" id="lamp-dl"></i>Delay</button>
+          <button type="button" class="rack-tab" role="tab" id="tab-rv" aria-selected="false" aria-controls="rk-rv"><i class="lamp" id="lamp-rv"></i>Reverb</button>
         </div>
         <section id="rk-tape" role="tabpanel" aria-labelledby="tab-tape"></section>
         <section id="rk-mb" role="tabpanel" aria-labelledby="tab-mb" hidden></section>
         <section id="rk-gr" role="tabpanel" aria-labelledby="tab-gr" hidden></section>
+        <section id="rk-dl" role="tabpanel" aria-labelledby="tab-dl" hidden></section>
+        <section id="rk-rv" role="tabpanel" aria-labelledby="tab-rv" hidden></section>
         <p class="rack-note" id="rack-note" role="status"></p>
         <div class="rack-foot">
           <label class="check"><input type="checkbox" id="rk-safe" checked> Safe peaks</label>
@@ -221,6 +226,7 @@
       <p>This is yours.</p>
       <div class="row">
         <button type="button" class="btn" id="c-edit">Edit</button>
+        <button type="button" class="btn" id="c-trim" title="Choose where the recording starts and ends. Nothing is deleted.">Trim</button>
       </div>
     </div>
   </div>
@@ -266,6 +272,7 @@
     <p class="s-msg" id="s-msg" role="status"></p>
     <div class="review-row" id="s-review" hidden>
       <button type="button" class="btn" id="s-again">Record again</button>
+      <button type="button" class="btn" id="s-edit">Edit recording</button>
       <button type="button" class="btn solid" id="s-keep">Use this take</button>
     </div>
     <p class="alt"><label class="link">Import a file instead<input type="file" id="s-file" accept="audio/*,.wav,.flac,.aif,.aiff,.mp3,.m4a,.ogg,.opus" hidden></label></p>

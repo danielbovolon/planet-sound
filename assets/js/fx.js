@@ -2,7 +2,7 @@
  *
  * The DSP itself lives in audio/fx-dsp.js (one file for the AudioWorklet, the export and the tests).
  * Here:
- *   - fxState        the current settings (Tape + Multiband + speed). One place; the panel, the player and Export all read it.
+ *   - fxState        the current settings (speed, Tape, Multiband, Granulator, Delay, Reverb). One place; the panel, the player and Export all read it.
  *   - FxPlayback     plays a decoded recording through the worklet, so the knobs can be heard while the sound plays.
  *   - renderFx       the same DSP run offline over the whole recording (Export WAV, Export spectrogram).
  *   - spectrogram    a log-frequency spectrogram of any audio, drawn like the archive's own.
@@ -83,6 +83,37 @@ export const GRAIN_PRESETS = [
   ['Reverse wash', { rev: 1, rate: 18, size: 420, spray: 0.3, pan: 0.5, mix: 0.6, lp: 7000 }],
   ['Rumble (−12 st)', { rate: 12, size: 350, pitch: -12, spray: 0.2, pan: 0.3, mix: 0.7, lp: 4000 }],
   ['Dust (sparse grains)', { mode: 'cloud', rate: 3, size: 90, pSpray: 7, spray: 1, pan: 1, mix: 0.7 }],
+  ['Chirps (rising grains)', { mode: 'cloud', rate: 20, size: 120, glide: 12, gSpray: 6, win: 'expo', smooth: 0.5, spray: 0.5, pan: 0.8, mix: 0.6 }],
+  ['Falling grains', { rate: 15, size: 400, glide: -12, gSpray: 4, win: 'gauss', spray: 0.4, pan: 0.7, mix: 0.65 }],
+  ['Rhythmic (probability)', { mode: 'sync', rate: 8, size: 90, prob: 0.55, win: 'expo', smooth: 0.7, panMode: 'alt', pan: 0.9, spray: 0.1, mix: 0.7 }],
+  ['Wandering scanner (LFO)', { rate: 30, size: 220, spray: 0.15, lfoRate: 0.12, lfoShape: 'drift', lfoPos: 0.9, lfoPitch: 3, pan: 0.6, mix: 0.75 }],
+  ['Filter-swept cloud', { mode: 'cloud', rate: 40, size: 160, spray: 0.5, lfoRate: 0.25, lfoShape: 'sine', lfoCut: 0.8, lp: 6000, pan: 0.7, mix: 0.7 }],
+  ['Feedback swarm', { mode: 'cloud', rate: 45, size: 240, pitch: 7, pSpray: 5, scale: 'fifths', fb: 0.7, spray: 0.4, pan: 0.8, mix: 0.6, lp: 9000 }],
+  ['Bit-crushed glitch', { rate: 14, size: 70, jitter: 0.5, rev: 0.4, bits: 7, down: 6, win: 'trap', panMode: 'alt', pan: 0.8, spray: 0.1, mix: 0.6 }],
+  ['Swelling octaves', { mode: 'cloud', rate: 6, size: 900, win: 'rexpo', smooth: 0.4, spray: 0.3, pSpray: 12, scale: 'octaves', panMode: 'pitch', pan: 0.9, mix: 0.7 }],
+  ['Stepping pitch (random LFO)', { mode: 'sync', rate: 12, size: 110, lfoRate: 3, lfoShape: 'random', lfoPitch: 12, pan: 0.6, mix: 0.6 }],
+];
+
+export const DELAY_PRESETS = [
+  ['Slapback', { mode: 'mono', time: 95, fb: 0.08, mix: 0.3, lc: 120, hc: 6000 }],
+  ['Quarter-second echo', { mode: 'stereo', time: 250, fb: 0.35, mix: 0.3 }],
+  ['Ping-pong', { mode: 'pingpong', time: 330, fb: 0.5, mix: 0.35, hc: 8000 }],
+  ['Tape echo (dark, wobbly)', { mode: 'mono', time: 380, fb: 0.55, mix: 0.35, lc: 180, hc: 3200, drive: 0.45, modRate: 0.7, modDepth: 0.35 }],
+  ['Dub (long feedback)', { mode: 'pingpong', time: 500, fb: 0.8, mix: 0.4, lc: 250, hc: 2400, drive: 0.3, duck: 0.4 }],
+  ['Canyon (diffused)', { mode: 'stereo', time: 700, offset: 12, fb: 0.6, mix: 0.35, diffuse: 0.8, hc: 5000 }],
+  ['Doubling (short, moving)', { mode: 'stereo', time: 18, offset: -30, fb: 0, mix: 0.45, modRate: 0.8, modDepth: 0.6, lc: 20, hc: 22000 }],
+  ['Stutter', { mode: 'pingpong', time: 90, fb: 0.7, mix: 0.5, lc: 400, hc: 7000 }],
+  ['Ducked echo (for voices)', { mode: 'stereo', time: 300, offset: 8, fb: 0.45, mix: 0.4, duck: 0.8 }],
+];
+export const VERB_PRESETS = [
+  ['Small room', { size: 0.2, decay: 0.5, pre: 5, damp: 6000, early: 0.7, diff: 0.7, mix: 0.25 }],
+  ['Wooden chamber', { size: 0.4, decay: 1.2, pre: 12, damp: 5000, bass: 1.2, early: 0.5, mix: 0.3 }],
+  ['Concert hall', { size: 0.75, decay: 2.6, pre: 25, damp: 7000, bass: 1.3, early: 0.35, mod: 0.3, mix: 0.3 }],
+  ['Plate', { size: 0.45, decay: 2, pre: 0, damp: 12000, bass: 0.8, early: 0, diff: 1, mod: 0.2, lc: 150, mix: 0.3 }],
+  ['Bright ambience', { size: 0.3, decay: 0.8, pre: 8, damp: 16000, early: 0.6, lc: 200, mix: 0.2 }],
+  ['Dark cave', { size: 0.85, decay: 4.5, pre: 40, damp: 1800, bass: 1.6, early: 0.3, mix: 0.35 }],
+  ['Cathedral', { size: 1, decay: 7, pre: 60, damp: 4500, bass: 1.4, early: 0.25, mod: 0.4, mix: 0.35 }],
+  ['Vast space (20 s)', { size: 1, decay: 20, pre: 120, damp: 3500, early: 0, mod: 0.6, mix: 0.45 }],
 ];
 
 /* ------------------------------------------------------------------ state */
@@ -122,6 +153,8 @@ export function applyGrainPreset(draft, preset) {
   const d = globalThis.PsFx.grainDefaults(), keep = { src: draft.grain.src, bufSec: draft.grain.bufSec, rStart: draft.grain.rStart, rLen: draft.grain.rLen, free: false, freeze: false, seed: draft.grain.seed };
   draft.grain = { ...d, ...keep, ...preset, on: true };
 }
+export function applyDelayPreset(draft, preset) { draft.delay = { ...globalThis.PsFx.delayDefaults(), ...preset, on: true }; }
+export function applyVerbPreset(draft, preset) { draft.verb = { ...globalThis.PsFx.verbDefaults(), ...preset, on: true }; }
 export function applyMbPreset(draft, preset) {
   const d = globalThis.PsFx.defaults().mb;
   draft.mb = { ...d, ...preset, on: true, knee: draft.mb.knee, rms: draft.mb.rms };
@@ -156,9 +189,14 @@ export class FxPlayback {
     })();
     return this.opening;
   }
-  async decode(arrayBuffer) {
+  /** Decode a recording; with `win` ({a, b} seconds) only that stretch is kept. */
+  async decode(arrayBuffer, win) {
     await this.open();
-    const buf = await new Promise((res, rej) => { const r = this.ctx.decodeAudioData(arrayBuffer, res, rej); if (r && r.then) r.then(res, rej); });
+    let buf = await new Promise((res, rej) => { const r = this.ctx.decodeAudioData(arrayBuffer, res, rej); if (r && r.then) r.then(res, rej); });
+    if (win) {
+      const sr = buf.sampleRate, s0 = Math.max(0, Math.round(win.a * sr)), s1 = Math.min(buf.length, Math.round(win.b * sr));
+      if (s1 - s0 > 64) { const nb = this.ctx.createBuffer(buf.numberOfChannels, s1 - s0, sr); for (let c = 0; c < buf.numberOfChannels; c++) nb.copyToChannel(buf.getChannelData(c).subarray(s0, s1), c); buf = nb; }
+    }
     this.setBuffer(buf);
     return buf;
   }

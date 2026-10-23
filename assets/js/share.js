@@ -10,7 +10,7 @@ import { call, mediaUrl, identity } from './api.js';
 import { prefs } from './store.js';
 import { fxState } from './fx.js';
 import { fetchAudio, shapedChannels } from './fxexport.js';
-import { isWav, rewriteWav, wavFromChannels, safeName } from './wav.js';
+import { isWav, rewriteWav, cutWav, wavFromChannels, safeName } from './wav.js';
 
 const baseUrl = () => location.origin + location.pathname.replace(/index\.html$/, '');
 const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
@@ -141,7 +141,7 @@ async function openAlbumLink() {
 
   $('#spot-title').textContent = `${name} · ${plural(items.length, 'recording')}`;
   // the same list the app uses for several recordings in one place, so a tap opens the sound panel
-  $('#spot-list').innerHTML = items.map(s => `<li><button type="button" data-id="${esc(s.id)}"><span>${esc(s.title)}</span><small>${esc(accession(s.no))}${s.place ? ', ' + esc(s.place) : ''}${s.duration ? ', ' + fmtTime(s.duration) : ''}</small></button></li>`).join('');
+  $('#spot-list').innerHTML = items.map(s => `<li><button type="button" data-id="${esc(s.id)}"><span>${esc(s.title)}</span><small>${esc(accession(s.no))}${s.place ? ', ' + esc(s.place) : ''}${s.duration ? ', ' + fmtTime(s.trim && s.trim.end > s.trim.start ? s.trim.end - s.trim.start : s.duration) : ''}</small></button></li>`).join('');
   const dlg = $('#spot');
   $('.spot-foot', dlg)?.remove();
   const foot = document.createElement('div');
@@ -210,12 +210,14 @@ async function openWav() {
     wEl('w-desc').value = lines.join('\n');
     const t = s.tech || {};
     const src = (t.codec || '').toUpperCase();
-    const est = s.duration && t.sampleRate && t.channels ? s.duration * t.sampleRate * t.channels * 3 : 0;
+    const tr = s.trim && s.trim.end > s.trim.start ? s.trim : null, len = tr ? tr.end - tr.start : s.duration;
+    const est = len && t.sampleRate && t.channels ? len * t.sampleRate * t.channels * 3 : 0;
     wEl('w-info').textContent = (W.fx
       ? `Exported as a 24-bit WAV${est ? ` (about ${fmtBytes(est)})` : ''}, with the sound shaping applied; the name and description are written into the file.`
       : src === 'WAV'
         ? 'The original is already a WAV. The audio is passed through unchanged; the name and description are written into the file.'
         : `The original is ${src || 'compressed audio'}. It is converted to a 24-bit WAV${est ? ` (about ${fmtBytes(est)})` : ''}; the name and description are written into the file.`)
+      + (tr ? ` Trimmed: ${fmtTime(len)} of ${fmtTime(s.duration)}; the hidden parts are left out.` : '')
       + (s.tech && s.tech.audioBytes > MAX_BYTES ? ' This recording is very large for a phone or browser.' : '');
     wEl('w-fx').textContent = W.fx ? `Processing: ${W.fx}. Level matching is for listening only and is not applied.` : 'No sound shaping: the file is exported as it is.';
     wEl('w-fx').hidden = false;
@@ -240,7 +242,8 @@ async function prepare() {
     setMsg(shaped ? 'Rendering the sound shaping…' : isWav(W.raw) ? 'Writing name and description…' : 'Converting to WAV…');
     await new Promise(r => setTimeout(r, 30));   // let the page paint
     const meta = { title: name, description: shaped ? `${desc}${desc ? '\n\n' : ''}Processing: ${W.fx}` : desc, credit: s.credit, recordedAt: s.recordedAt, reference: accession(s.no).replace(/\s+/g, '-') };
-    let blob = !shaped && isWav(W.raw) ? rewriteWav(W.raw, meta) : null;
+    const tr = s.trim && s.trim.end > s.trim.start ? s.trim : null;
+    let blob = !shaped && isWav(W.raw) ? (tr ? cutWav(W.raw, tr.start, tr.end, meta) : rewriteWav(W.raw, meta)) : null;
     if (!blob) {
       const { chs, rate } = await shapedChannels(W.raw.slice(0), s, f => { setProg(0.4 + f * 0.55); });
       blob = wavFromChannels(chs, rate, meta);

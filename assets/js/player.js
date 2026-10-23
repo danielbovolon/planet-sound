@@ -5,7 +5,10 @@
  *
  * Sound shaping (Tape, Multiband, speed): when the listener turns any of it on, the recording is decoded
  * once and played through the effects (fx.js) instead of through the audio element, from the same
- * position. Nothing changes for anyone who doesn't touch it. */
+ * position. Nothing changes for anyone who doesn't touch it.
+ *
+ * Trim: an entry may carry a stretch { start, end } chosen by its owner. Only that stretch is played, looped and
+ * timed; with sound shaping, only that stretch is decoded. The file itself is complete. */
 import { FxPlayback } from './fx.js';
 
 const TARGET = -20, CEILING = -1;
@@ -26,7 +29,9 @@ export class Player {
     this.hold = [-90, -90]; this.holdT = [0, 0]; this.level = [-90, -90];
     this.fxp = null; this.fxMode = false; this.fxReady = false; this.fxPrep = null; this.fxError = '';
     this.rawBlob = null; this.srcUrl = ''; this.loop = false;
+    this.win = null;
     this.a.addEventListener('timeupdate', () => { if (!this.fxMode) this._time(); });
+    this.a.addEventListener('loadedmetadata', () => { if (this.win && !this.fxMode && this.a.paused && this.a.currentTime < this.win.a) { try { this.a.currentTime = this.win.a; } catch {} } });
     this.a.addEventListener('durationchange', () => { if (!this.fxMode) this._time(); });
     this.a.addEventListener('play', () => { if (this.fxMode) return; this.onState('playing'); this._loop(); });
     this.a.addEventListener('pause', () => { if (this.fxMode) return; this.onState('paused'); });
@@ -65,11 +70,14 @@ export class Player {
   }
   setLevelMatch(on) { this.levelMatch = on; this._applyGain(); }
   /** Loop the recording. Works the same through the plain element and through the effects engine. */
-  setLoop(on) { this.loop = !!on; this.a.loop = this.loop; if (this.fxp) this.fxp.setLoop(this.loop); }
+  setLoop(on) { this.loop = !!on; this.a.loop = this.loop && !this.win; if (this.fxp) this.fxp.setLoop(this.loop); }
   isPlaying() { return this.fxMode ? !!(this.fxp && this.fxp.playing) : !this.a.paused; }
   load(sound, url) {
     this.stop();
     this.sound = sound;
+    const t = sound && sound.trim;
+    this.win = t && t.end > t.start ? { a: t.start, b: t.end } : null;
+    this.a.loop = this.loop && !this.win;
     this.seq = (this.seq || 0) + 1;
     this.srcUrl = url || ''; this.rawBlob = null;
     this.a.src = url || '';
@@ -96,7 +104,7 @@ export class Player {
       if (this.needWav && !/\.wav$/i.test(url)) { try { b = await this._toWav(b); } catch (e) { console.warn('WAV copy failed', e); } }
       if (!q() || !this.a.paused) return;
       if (this.blobUrl) URL.revokeObjectURL(this.blobUrl);
-      this.blobUrl = URL.createObjectURL(b);
+      this.blobUrl = URL.createObjectURL(b); this.blobFor = this.sound && this.sound.id;
       if (this.fxMode) return;
       this.a.src = this.blobUrl; this.a.load();
     }).catch(() => {});
@@ -122,6 +130,7 @@ export class Player {
     this._graph();
     // iOS/Safari only starts audio inside the tap itself: resume and play synchronously, never await first.
     if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume().catch(() => {});
+    if (this.win) { const c = this.a.currentTime || 0; if (c < this.win.a - 0.01 || c >= this.win.b - 0.02) { try { this.a.currentTime = this.win.a; } catch {} } }
     const p = this.a.play();
     if (p && p.catch) p.catch(e => { if (e && e.name !== 'AbortError') this.onState('error', e); });
   }
@@ -130,15 +139,21 @@ export class Player {
     const d = this.duration();
     if (!d) return;
     if (this.fxMode) { this.fxp.seek(Math.max(0, Math.min(d - 0.01, frac * d))); this._time(); return; }
-    this.a.currentTime = Math.max(0, Math.min(d - 0.01, frac * d)); this._time();
+    this.a.currentTime = this._a0() + Math.max(0, Math.min(d - 0.01, frac * d)); this._time();
   }
+  _a0() { return this.win ? this.win.a : 0; }
   duration() {
     if (this.fxMode) return this.fxp.duration;
-    return isFinite(this.a.duration) && this.a.duration > 0 ? this.a.duration : (this.sound && this.sound.duration) || 0;
+    const full = isFinite(this.a.duration) && this.a.duration > 0 ? this.a.duration : (this.sound && this.sound.duration) || 0;
+    return this.win ? Math.max(0, Math.min(full || this.win.b, this.win.b) - this.win.a) : full;
   }
   _time() {
     if (this.fxMode) { const sp = this.fxp.rate || 1; this.onTime(this.fxp.position() / sp, this.fxp.duration / sp); return; }
-    this.onTime(this.a.currentTime || 0, this.duration());
+    if (this.win && !this.a.paused && (this.a.currentTime || 0) >= this.win.b - 0.005) {     // the end of the stretch
+      if (this.loop) { try { this.a.currentTime = this.win.a; } catch {} }
+      else { try { this.a.pause(); this.a.currentTime = this.win.a; } catch {} this.onState('ended'); }
+    }
+    this.onTime(Math.max(0, (this.a.currentTime || 0) - this._a0()), this.duration());
   }
   _loop() {
     cancelAnimationFrame(this.raf);
@@ -168,7 +183,7 @@ export class Player {
       if (!blob) { const r = await fetch(this.srcUrl, { cache: 'no-store' }); if (!r.ok) throw new Error('download'); blob = await r.blob(); if (seq === this.seq) this.rawBlob = blob; }
       if (seq !== this.seq || this.fxp !== fxp) return false;
       if (this.sound && this.sound.tech && this.sound.tech.audioBytes > 400 * 1024 * 1024) throw new Error('too large');
-      await fxp.decode(await blob.arrayBuffer());
+      await fxp.decode(await blob.arrayBuffer(), this.win);
       if (seq !== this.seq || this.fxp !== fxp) return false;
       fxp.setLevelDb(this.gainDb());
       this.fxReady = true;
@@ -186,7 +201,7 @@ export class Player {
     this.fxp.setParams(params);
     if (!this.fxMode) {
       this.fxMode = true;
-      const was = !this.a.paused, pos = this.a.currentTime || 0;
+      const was = !this.a.paused, pos = Math.max(0, (this.a.currentTime || 0) - this._a0());
       try { this.a.pause(); } catch {}
       this.an = this.fxp.an; if (!this.buf) this.buf = new Float32Array(1024);
       this.fxp.seek(pos);
