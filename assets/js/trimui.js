@@ -1,7 +1,7 @@
 /* Planet Sound — choosing where a recording starts and ends.
  *
  * One editor, two uses:
- *   take   "Edit recording" in the recorder, before publishing: Cut removes what is outside for good.
+ *   take   "Trim" in the recorder, before publishing: Cut removes what is outside for good.
  *   entry  "Trim" on a published entry (owner only): the stretch is stored with the entry; what is outside is only
  *          hidden, never deleted, and can be brought back here at any time.
  * The picture is the recording's spectrogram (or its waveform); two handles set the start and the end, and the
@@ -64,7 +64,7 @@ export function editTrim(o) {
   const dur = Math.max(MIN_LEN, o.duration || 0);
   let a = Math.max(0, Math.min(dur - MIN_LEN, o.start || 0)), b = Math.max(a + MIN_LEN, Math.min(dur, o.end || dur));
   const take = o.mode === 'take';
-  $('#tr-title').textContent = take ? 'Edit recording' : 'Trim';
+  $('#tr-title').textContent = 'Trim';
   $('#tr-hint').textContent = take
     ? 'Drag the two handles to where the recording should start and end. What is outside is cut away for good when you press Cut.'
     : 'Drag the two handles to where the recording should start and end. What is outside is only hidden: it stays stored, and you can bring it back here at any time.';

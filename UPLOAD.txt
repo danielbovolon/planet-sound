@@ -1,30 +1,7 @@
-Planet Sound — update 6: Edit recording, Trim, Delay, Reverb, deeper Granulator
+Planet Sound — update 7: "Edit recording" in the recorder is now called "Trim", like on the entries.
 
-1. BACKEND FIRST (needed for Trim to be saved)
-   Upload api/src/index.js -> api/src/   (also api/schema.sql and api/migrations/0004_trim.sql, for the record)
-   Then in PowerShell, inside the api folder:
-       npm run deploy
-   The Worker adds the two new database columns (trim_start, trim_end) by itself on its first request.
-   No database command is needed.
-
-2. WEBSITE (GitHub repo planet-sound) — upload each file to the same folder:
-   index.html                    -> root
-   sw.js                         -> root           (new VERSION, so phones pick up the update)
-   assets/css/fx.css             -> assets/css/
-   assets/css/trim.css           -> assets/css/    (new)
-   assets/js/app.js              -> assets/js/
-   assets/js/fx.js               -> assets/js/
-   assets/js/fxexport.js         -> assets/js/
-   assets/js/fxui.js             -> assets/js/
-   assets/js/grainui.js          -> assets/js/
-   assets/js/player.js           -> assets/js/
-   assets/js/share.js            -> assets/js/
-   assets/js/spaceui.js          -> assets/js/     (new)
-   assets/js/specpal.js          -> assets/js/
-   assets/js/studio.js           -> assets/js/
-   assets/js/trimui.js           -> assets/js/     (new)
-   assets/js/wav.js              -> assets/js/
-   assets/js/audio/engine.js     -> assets/js/audio/
-   assets/js/audio/fx-dsp.js     -> assets/js/audio/
-
-3. You can delete UPLOAD.txt from the root of the repo (the one from last time): it is publicly readable on the site.
+Upload to the same folders (website only, no backend change):
+  index.html             -> root
+  sw.js                  -> root   (new VERSION, so phones pick up the update)
+  assets/js/trimui.js    -> assets/js/
+  assets/js/studio.js    -> assets/js/

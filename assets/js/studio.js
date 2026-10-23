@@ -343,7 +343,7 @@ function drawReview() {
   }
   drawMeters();
 }
-/* Edit recording: cut the take to a stretch before it is published. What is cut away is gone. */
+/* Trim (recorder): cut the take to a stretch before it is published. What is cut away is gone. */
 async function editTake() {
   if (!take || state !== 'review') return;
   stopListen();

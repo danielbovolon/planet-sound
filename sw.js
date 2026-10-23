@@ -5,7 +5,7 @@
  *   draw in the field.
  * - The catalogue is fetched fresh when possible, cached as a fallback.
  * Bump VERSION whenever you deploy changed files. */
-const VERSION = 'ps-2026-10-23a';
+const VERSION = 'ps-2026-10-23b';
 const SHELL = [
   './', 'index.html', 'config.js', 'manifest.webmanifest',
   'assets/css/app.css', 'assets/css/glass.css', 'assets/css/recorder.css', 'assets/css/fx.css', 'assets/css/update4.css', 'assets/css/nobox.css', 'assets/css/finish.css', 'assets/css/update5.css', 'assets/css/trim.css',
