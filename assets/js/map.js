@@ -205,7 +205,7 @@ function atlasStyle(sources) {
     version: 8,
     glyphs: `${OFM}/fonts/{fontstack}/{range}.pbf`,
     projection: { type: 'mercator' },
-    sources: { ...sources, grid: { type: 'geojson', data: graticule() } },
+    sources: { ...sources },
     layers: [
       { id: 'bg', type: 'background', paint: { 'background-color': PARCH } },
       { id: 'bg-grain', type: 'background', paint: { 'background-pattern': 'ps-paper' } },
@@ -222,8 +222,6 @@ function atlasStyle(sources) {
         paint: { 'line-color': 'rgba(74,52,32,0.25)', 'line-width': ['interpolate', ['linear'], ['zoom'], 12, 0.4, 16, 1.8] } },
       { id: 'road-major', type: 'line', source: 'ofm', 'source-layer': 'transportation', minzoom: 6, filter: ['match', ['get', 'class'], ['motorway', 'trunk', 'primary', 'secondary'], true, false],
         paint: { 'line-color': 'rgba(158,43,28,0.45)', 'line-width': ['interpolate', ['linear'], ['zoom'], 6, 0.4, 12, 1.2, 16, 2.8] } },
-      { id: 'grid', type: 'line', source: 'grid', maxzoom: 8, filter: ['!', ['has', 'tropic']], paint: { 'line-color': ['case', ['get', 'main'], 'rgba(158,43,28,0.6)', 'rgba(74,52,32,0.22)'], 'line-width': ['case', ['get', 'main'], 1, 0.6] } },
-      { id: 'tropics', type: 'line', source: 'grid', maxzoom: 8, filter: ['get', 'tropic'], paint: { 'line-color': 'rgba(158,43,28,0.45)', 'line-width': 0.8, 'line-dasharray': [6, 3] } },
       { id: 'b-region', type: 'line', source: 'ofm', 'source-layer': 'boundary', minzoom: 5, filter: ['all', ['==', ['get', 'admin_level'], 4], ['!=', ['get', 'maritime'], 1]],
         paint: { 'line-color': 'rgba(74,52,32,0.3)', 'line-width': 0.6, 'line-dasharray': [1, 2] } },
       { id: 'b-country', type: 'line', source: 'ofm', 'source-layer': 'boundary', filter: ['all', ['==', ['get', 'admin_level'], 2], ['!=', ['get', 'maritime'], 1]],
@@ -293,11 +291,14 @@ function observatoryStyle(sources, c) {
 
 export function createMap(el, { onSelect, onSpot, onMoveEnd, start }) {
   let base = lookBase(), selMarker = null, data = { type: 'FeatureCollection', features: [] }, selected = null, picking = null;
+  // the flat map at its widest: the whole width of the world exactly fills the screen (on a phone, the height decides),
+  // centred a little north so the inhabited world sits in view
+  const atlasZoom = () => Math.max(0, Math.log2(el.clientWidth / 512));
   const map = new maplibregl.Map({
     container: el,
     style: buildStyle(base),
-    center: start ? [start.lng, start.lat] : [11.35, 30],
-    zoom: start ? start.zoom : base === 'atlas' ? Math.max(0, Math.log2(el.clientWidth / 512) + 0.15) : (innerWidth < 700 ? 1.1 : 2.15),
+    center: start ? [start.lng, start.lat] : base === 'atlas' ? [10, 15] : [11.35, 30],
+    zoom: start ? start.zoom : base === 'atlas' ? atlasZoom() : (innerWidth < 700 ? 1.1 : 2.15),
     attributionControl: { compact: true },
     maxPitch: 0, dragRotate: false, pitchWithRotate: false, touchPitch: false,
     renderWorldCopies: false,
@@ -402,7 +403,7 @@ export function createMap(el, { onSelect, onSpot, onMoveEnd, start }) {
     retheme() {
       const was = base; base = lookBase(); map.setStyle(buildStyle(base), { diff: false });
       // the flat map shows the whole world at once: going to it from the globe, open it at that size
-      if (base === 'atlas' && was !== 'atlas' && map.getZoom() < 3) map.jumpTo({ zoom: Math.max(0, Math.log2(el.clientWidth / 512) + 0.15) });
+      if (base === 'atlas' && was !== 'atlas' && map.getZoom() < 3) map.jumpTo({ center: [10, 15], zoom: atlasZoom() });
     },
     resize() { map.resize(); },
     center() { const c = map.getCenter(); return { lat: c.lat, lng: c.lng, zoom: map.getZoom() }; },
