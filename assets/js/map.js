@@ -205,7 +205,7 @@ function atlasStyle(sources) {
     version: 8,
     glyphs: `${OFM}/fonts/{fontstack}/{range}.pbf`,
     projection: { type: 'mercator' },
-    sources: { ...sources },
+    sources: { ...sources, frame: { type: 'geojson', data: { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: [[-180, -85.05], [-180, 85.05], [180, 85.05], [180, -85.05], [-180, -85.05]] } } } },
     layers: [
       { id: 'bg', type: 'background', paint: { 'background-color': PARCH } },
       { id: 'bg-grain', type: 'background', paint: { 'background-pattern': 'ps-paper' } },
@@ -237,6 +237,9 @@ function atlasStyle(sources) {
       { id: 'place-country', type: 'symbol', source: 'ofm', 'source-layer': 'place', minzoom: 1.5, maxzoom: 7, filter: ['==', ['get', 'class'], 'country'],
         layout: { ...it, 'text-field': NAME, 'text-transform': 'uppercase', 'text-letter-spacing': 0.35, 'text-size': ['interpolate', ['linear'], ['zoom'], 2, 10, 6, 14] },
         paint: { 'text-color': 'rgba(158,43,28,0.75)', 'text-halo-color': PARCH, 'text-halo-width': 1.2 } },
+      // the neatline: a double ink rule around the edge of the world, as on a printed map
+      { id: 'frame', type: 'line', source: 'frame', paint: { 'line-color': '#4A3420', 'line-width': 1.4 } },
+      { id: 'frame-2', type: 'line', source: 'frame', paint: { 'line-color': 'rgba(74,52,32,0.55)', 'line-width': 0.7, 'line-offset': -5 } },
       ...soundLayers({}, 'atlas'),
     ],
   };
@@ -291,9 +294,22 @@ function observatoryStyle(sources, c) {
 
 export function createMap(el, { onSelect, onSpot, onMoveEnd, start }) {
   let base = lookBase(), selMarker = null, data = { type: 'FeatureCollection', features: [] }, selected = null, picking = null;
-  // the flat map at its widest: the whole width of the world exactly fills the screen (on a phone, the height decides),
-  // centred a little north so the inhabited world sits in view
-  const atlasZoom = () => Math.max(0, Math.log2(el.clientWidth / 512));
+  // The flat map. Zoomed out as far as it goes, the whole world fits on screen from pole to pole and side to side
+  // (below the bar), with parchment around it; zoomed in, it can be dragged no further than its edges.
+  // A phone opens with the world filling the height (swipe sideways); a wider screen opens with all of it in view.
+  const BAR = 60;
+  const atlasFit = () => Math.log2(Math.max(128, Math.min(el.clientWidth - 16, el.clientHeight - BAR - 16)) / 512);
+  const atlasZoom = () => el.clientWidth < el.clientHeight ? Math.log2(Math.max(256, el.clientHeight) / 512) : atlasFit();
+  const atlasConstrain = (lngLat, zoom) => {
+    const z = Math.min(22, Math.max(atlasFit(), zoom)), ws = 512 * 2 ** z, w = el.clientWidth, h = el.clientHeight;
+    let x = (lngLat.lng + 180) / 360 * ws;
+    const lat = Math.max(-85.05, Math.min(85.05, lngLat.lat)) * Math.PI / 180;
+    let y = (1 - Math.log(Math.tan(Math.PI / 4 + lat / 2)) / Math.PI) / 2 * ws;
+    x = ws <= w ? ws / 2 : Math.min(ws - w / 2, Math.max(w / 2, x));
+    y = ws <= h - BAR ? ws / 2 - BAR / 2 : Math.min(ws - h / 2, Math.max(h / 2 - BAR, y));
+    const lng = x / ws * 360 - 180, la = Math.atan(Math.sinh(Math.PI * (1 - 2 * y / ws))) * 180 / Math.PI;
+    return { center: new maplibregl.LngLat(lng, la), zoom: z };
+  };
   const map = new maplibregl.Map({
     container: el,
     style: buildStyle(base),
@@ -302,6 +318,7 @@ export function createMap(el, { onSelect, onSpot, onMoveEnd, start }) {
     attributionControl: { compact: true },
     maxPitch: 0, dragRotate: false, pitchWithRotate: false, touchPitch: false,
     renderWorldCopies: false,
+    transformConstrain: base === 'atlas' ? (c, z) => atlasConstrain(c, z) : null,
   });
   map.touchZoomRotate.disableRotation();
   const addDot = () => { try { if (!map.hasImage('ps-dot')) map.addImage('ps-dot', dotImage(), { pixelRatio: 2 }); } catch {} };
@@ -403,6 +420,7 @@ export function createMap(el, { onSelect, onSpot, onMoveEnd, start }) {
     retheme() {
       const was = base; base = lookBase(); map.setStyle(buildStyle(base), { diff: false });
       // the flat map shows the whole world at once: going to it from the globe, open it at that size
+      map.setTransformConstrain(base === 'atlas' ? atlasConstrain : null);
       if (base === 'atlas' && was !== 'atlas' && map.getZoom() < 3) map.jumpTo({ center: [10, 15], zoom: atlasZoom() });
     },
     resize() { map.resize(); },
