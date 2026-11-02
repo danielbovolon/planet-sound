@@ -1,5 +1,5 @@
-Planet Sound — update 8: two new appearances, Observatory (red globe) and Atlas (flat antique map),
-and a refined look for Paper and Night. Replaces the earlier update 8 zips.
+Planet Sound — update 8: three appearances, Night, Observatory (red globe) and Atlas (flat antique map);
+Settings is its own page in the menu; a cleaner look throughout. Replaces all earlier update 8 zips.
 
 Website only (no backend change). Upload each file to the same folder in the planet-sound repo:
   index.html                                    -> root
@@ -13,5 +13,5 @@ Website only (no backend change). Upload each file to the same folder in the pla
   assets/js/app.js                              -> assets/js/
   assets/js/map.js                              -> assets/js/
 
-Then: Archive → Settings → Appearance → Observatory or Atlas.
+Then: menu → Settings → Appearance.
 (Don't upload this UPLOAD.txt to the repo: anything in the repo can be read on the website.)

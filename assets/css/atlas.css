@@ -99,7 +99,7 @@ html[data-look="atlas"] :is(.strip, .curve, .gr-view canvas, .gr-over canvas, .f
 html[data-look="atlas"] .loop input:checked + .loop-sw { background: var(--oxblood); }
 
 /* ---------- pages ---------- */
-html[data-look="atlas"] #index-view, html[data-look="atlas"] #about-view, html[data-look="atlas"] #archive-view {
+html[data-look="atlas"] #index-view, html[data-look="atlas"] #about-view, html[data-look="atlas"] #archive-view, html[data-look="atlas"] #settings-view {
   background: var(--grain), radial-gradient(ellipse at 50% 40%, #F1E4C3, #E4D2A6); background-size: 220px 220px, auto;
   -webkit-backdrop-filter: none; backdrop-filter: none;
 }

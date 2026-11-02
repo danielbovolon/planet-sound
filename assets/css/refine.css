@@ -75,7 +75,7 @@ body[data-page="map"] .bar::before {
 @keyframes ps-fade { from { opacity: 0; } to { opacity: 1; } }
 @keyframes ps-drop { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
 .card:not([hidden]) { animation: ps-rise .3s cubic-bezier(.2, .7, .2, 1) both; }
-#index-view:not([hidden]), #archive-view:not([hidden]), #about-view:not([hidden]) { animation: ps-fade .22s ease both; }
+#index-view:not([hidden]), #archive-view:not([hidden]), #settings-view:not([hidden]), #about-view:not([hidden]) { animation: ps-fade .22s ease both; }
 dialog[open] { animation: ps-rise .24s cubic-bezier(.2, .7, .2, 1) both; }
 .studio:not([hidden]) { animation: ps-fade .2s ease both; }
 
@@ -97,3 +97,15 @@ dialog[open] { animation: ps-rise .24s cubic-bezier(.2, .7, .2, 1) both; }
 .rack-tab { flex: 1 1 30% !important; min-width: 0; padding: 9px 4px !important; white-space: nowrap; }
 
 .seg { flex-wrap: wrap; }
+
+/* Settings: a page of its own, laid out like the Archive */
+#settings-view {
+  position: absolute; inset: 0; padding-top: var(--bar-h); overflow-y: auto; overflow-x: hidden;
+  -webkit-overflow-scrolling: touch; overscroll-behavior: contain;
+  background: var(--page-glass, color-mix(in srgb, var(--paper) 74%, transparent));
+  -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur);
+}
+#settings-view input:not([type="checkbox"]):not([type="radio"]) { background: var(--glass-field) !important; border-color: var(--glass-line) !important; }
+#settings-view .seg { background: var(--glass-field); -webkit-backdrop-filter: none; backdrop-filter: none; box-shadow: none; border-color: var(--glass-line); }
+#settings-view .btn:not(.solid):not(.ghost):not(.quiet) { background: var(--glass-field); border-color: var(--glass-line); }
+#settings-view .you-sec:first-child { border-top: 0; padding-top: 4px; }

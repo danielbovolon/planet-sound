@@ -33,19 +33,18 @@ const S = {
 };
 
 /* ---------------- theme ---------------- */
-/* Appearance: Match device, Paper, Night, Observatory (a dark look of its own: data-theme="dark" + data-look) or
-   Atlas (a flat antique map: data-theme="light" + data-look). */
-const THEME_META = [...document.querySelectorAll('meta[name="theme-color"]')].map(m => [m, m.content]);
+/* Appearance: Night (the default), Observatory (a dark look of its own: data-theme="dark" + data-look) or
+   Atlas (a flat antique map: data-theme="light" + data-look). Older choices (Match device, Paper) become Night. */
+const THEMES = [['dark', 'Night'], ['observatory', 'Observatory'], ['atlas', 'Atlas']];
+const themePref = () => { const t = prefs.get('theme', 'dark'); return THEMES.some(([k]) => k === t) ? t : 'dark'; };
 function applyTheme() {
-  const t = prefs.get('theme', 'auto'), obs = t === 'observatory', atlas = t === 'atlas', root = document.documentElement;
-  if (t === 'auto') root.removeAttribute('data-theme'); else root.dataset.theme = obs ? 'dark' : atlas ? 'light' : t;
+  const t = themePref(), obs = t === 'observatory', atlas = t === 'atlas', root = document.documentElement;
+  root.dataset.theme = atlas ? 'light' : 'dark';
   if (obs || atlas) root.dataset.look = t; else delete root.dataset.look;
-  const dark = obs || t === 'dark' || (t === 'auto' && matchMedia('(prefers-color-scheme: dark)').matches);
-  document.body.classList.toggle('dark-ui', dark);
-  THEME_META.forEach(([m, c]) => { m.content = obs ? '#10151C' : atlas ? '#EADBB4' : c; });
+  document.body.classList.toggle('dark-ui', !atlas);
+  document.querySelectorAll('meta[name="theme-color"]').forEach(m => { m.content = obs ? '#10151C' : atlas ? '#EADBB4' : '#10161D'; });
 }
 applyTheme();
-matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { if (prefs.get('theme', 'auto') === 'auto') { applyTheme(); mapCtl && mapCtl.retheme(); redrawCard(); } });
 
 /* ---------------- map ---------------- */
 const lastView = prefs.get('mapView', null);
@@ -71,7 +70,7 @@ $('#locate').addEventListener('click', () => {
 });
 
 /* ---------------- views ---------------- */
-const VIEWS = ['map', 'index', 'archive', 'about'];
+const VIEWS = ['map', 'index', 'archive', 'settings', 'about'];
 function setView(v) {
   if (!VIEWS.includes(v)) v = 'map';
   const was = S.view;
@@ -85,6 +84,7 @@ function setView(v) {
   if (v === 'map') requestAnimationFrame(() => mapCtl.resize());
   if (v === 'index') renderIndex();
   if (v === 'archive' && was !== 'archive') openYou();
+  if (v === 'settings') renderSettings();
 }
 document.body.dataset.page = 'map';
 $$('[data-view]').forEach(b => b.addEventListener('click', () => setView(b.dataset.view)));
@@ -478,6 +478,7 @@ $('#e-delete').addEventListener('click', async () => {
     setSounds(S.sounds.filter(x => x.id !== s.id));
     await load();
     if (S.view === 'archive') renderYou();
+    if (S.view === 'settings') renderSettings();
     toast('Recording removed');
   } catch (e) { $('#e-msg').textContent = e.message; }
 });
@@ -574,7 +575,6 @@ async function renderYou(warning) {
   const mine = S.sounds.filter(isMine), priv = mine.filter(s => s.visibility === 'private');
   const pending = await outbox.all().catch(() => []);
   const u = identity.user;
-  const theme = prefs.get('theme', 'auto');
   const flacs = mine.filter(s => s.tech && s.tech.codec === 'FLAC');
   const rows = mine.map(s => `<li><button type="button" class="y-item" data-open="${esc(s.id)}"><span class="y-title">${esc(s.title)}</span><small>${esc(s.place || accession(s.no))}${s.visibility === 'private' ? ' · private' : ''}</small></button></li>`).join('');
   body.innerHTML = `
@@ -590,39 +590,10 @@ async function renderYou(warning) {
       ${mine.length ? `<ul class="y-list">${rows}</ul>` : '<p>No recordings yet. Everything you publish, public or private, is listed here.</p>'}
     </section>
     ${flacs.length ? `<section class="you-sec"><h3>Older recordings</h3><p>${flacs.length} recording${flacs.length === 1 ? ' is' : 's are'} stored as FLAC, which Safari and iPhone can’t always play. Converting makes a WAV copy of each one on the server. Do it on a computer with Brave or Chrome. The original FLAC is kept.</p><button type="button" class="btn" id="y-convert">Convert ${flacs.length} to WAV</button><p id="y-conv" class="you-note" aria-live="polite"></p></section>` : ''}
-    <details class="you-more">
-      <summary>Settings</summary>
-    <section class="you-sec">
-      <h3>Credit</h3>
-      <div class="row"><input id="y-name" value="${esc((u && u.name) || prefs.get('credit', ''))}" maxlength="80" placeholder="How recordings are credited" style="flex:1;min-height:38px;padding:0 10px;border-radius:8px;border:1px solid var(--rule);background:var(--paper)" aria-label="Credit name"><button type="button" class="btn" id="y-save-name">Save</button></div>
-    </section>
-    <section class="you-sec">
-      <h3>Collections</h3>
-      ${S.collections.length ? S.collections.map(c => `<div class="coll"><span>${esc(c.name)}<small>${c.ids.length}</small></span><span class="row"><button type="button" class="btn quiet" data-show="${esc(c.id)}">Show</button><button type="button" class="btn quiet" data-del="${esc(c.id)}">Delete</button></span></div>`).join('')
-      : '<p>None yet. Use “Add to collection” on any entry.</p>'}
-    </section>
-    <section class="you-sec">
-      <h3>Appearance</h3>
-      <div class="seg" role="group" aria-label="Appearance">${[['auto', 'Match device'], ['light', 'Paper'], ['dark', 'Night'], ['observatory', 'Observatory'], ['atlas', 'Atlas']].map(([t, l]) => `<button type="button" data-theme-set="${t}" aria-pressed="${theme === t}">${l}</button>`).join('')}</div>
-    </section>
-    ${mine.length ? `<section class="you-sec"><h3>Export</h3><p>A catalogue of your recordings with links to every original file.</p><button type="button" class="btn" id="y-export">Download catalogue (JSON)</button></section>` : ''}
-    </details>`;
+`;
   const on = (id, fn) => { const x = body.querySelector(id); if (x) x.onclick = fn; };
   body.querySelectorAll('[data-open]').forEach(b => b.onclick = () => { setView('map'); openCard(b.dataset.open, { fly: true }); });
   on('#y-retry', async () => { await flushOutbox(true); renderYou(); });
-  on('#y-save-name', async () => {
-    const name = body.querySelector('#y-name').value.trim(); prefs.set('credit', name);
-    if (identity.key) { try { const d = await call('/api/me', { method: 'PATCH', body: { name } }); identity.setUser(d.user); } catch (e) { return toast(e.message); } }
-    toast('Saved');
-  });
-  body.querySelectorAll('[data-show]').forEach(b => b.onclick = () => { S.collection = b.dataset.show; renderCollectionFilter(); setView('index'); refresh(); });
-  body.querySelectorAll('[data-del]').forEach(b => b.onclick = async () => {
-    const c = S.collections.find(x => x.id === b.dataset.del);
-    if (!(await ask({ title: `Delete “${c.name}”?`, body: 'The recordings stay in the archive. Only the collection goes.', yes: 'Delete', danger: true }))) return openYou();
-    S.collections = S.collections.filter(x => x.id !== c.id); if (S.collection === c.id) S.collection = ''; saveCollections(); refresh(); openYou();
-  });
-  body.querySelectorAll('[data-theme-set]').forEach(b => b.onclick = () => { prefs.set('theme', b.dataset.themeSet); applyTheme(); mapCtl.retheme(); redrawCard(); renderYou(); });
-  on('#y-export', exportCatalogue);
   const signInWith = async create => {
     const email = body.querySelector('#y-email').value.trim().toLowerCase();
     const password = body.querySelector('#y-pass').value;
@@ -655,6 +626,41 @@ async function renderYou(warning) {
     note.textContent = `${done} converted${failed ? `, ${failed} could not be converted. Try again on a computer with Brave or Chrome` : ''}.`;
     S.full.clear(); await load(); renderYou();
   });
+}
+/* Settings: its own page in the menu. */
+function renderSettings() {
+  const body = $('#settings-body'); if (!body) return;
+  const u = identity.user, theme = themePref();
+  const mine = S.sounds.filter(isMine);
+  body.innerHTML = `
+    <section class="you-sec">
+      <h3>Credit</h3>
+      <div class="row"><input id="y-name" value="${esc((u && u.name) || prefs.get('credit', ''))}" maxlength="80" placeholder="How recordings are credited" style="flex:1;min-height:38px;padding:0 10px;border-radius:8px;border:1px solid var(--rule);background:var(--paper)" aria-label="Credit name"><button type="button" class="btn" id="y-save-name">Save</button></div>
+    </section>
+    <section class="you-sec">
+      <h3>Collections</h3>
+      ${S.collections.length ? S.collections.map(c => `<div class="coll"><span>${esc(c.name)}<small>${c.ids.length}</small></span><span class="row"><button type="button" class="btn quiet" data-show="${esc(c.id)}">Show</button><button type="button" class="btn quiet" data-del="${esc(c.id)}">Delete</button></span></div>`).join('')
+      : '<p>None yet. Use “Add to collection” on any entry.</p>'}
+    </section>
+    <section class="you-sec">
+      <h3>Appearance</h3>
+      <div class="seg" role="group" aria-label="Appearance">${THEMES.map(([t, l]) => `<button type="button" data-theme-set="${t}" aria-pressed="${theme === t}">${l}</button>`).join('')}</div>
+    </section>
+    ${mine.length ? `<section class="you-sec"><h3>Export</h3><p>A catalogue of your recordings with links to every original file.</p><button type="button" class="btn" id="y-export">Download catalogue (JSON)</button></section>` : ''}`;
+  const on = (id, fn) => { const x = body.querySelector(id); if (x) x.onclick = fn; };
+  on('#y-save-name', async () => {
+    const name = body.querySelector('#y-name').value.trim(); prefs.set('credit', name);
+    if (identity.key) { try { const d = await call('/api/me', { method: 'PATCH', body: { name } }); identity.setUser(d.user); } catch (e) { return toast(e.message); } }
+    toast('Saved');
+  });
+  body.querySelectorAll('[data-show]').forEach(b => b.onclick = () => { S.collection = b.dataset.show; renderCollectionFilter(); setView('index'); refresh(); });
+  body.querySelectorAll('[data-del]').forEach(b => b.onclick = async () => {
+    const c = S.collections.find(x => x.id === b.dataset.del);
+    if (!(await ask({ title: `Delete “${c.name}”?`, body: 'The recordings stay in the archive. Only the collection goes.', yes: 'Delete', danger: true }))) return renderSettings();
+    S.collections = S.collections.filter(x => x.id !== c.id); if (S.collection === c.id) S.collection = ''; saveCollections(); refresh(); renderSettings();
+  });
+  body.querySelectorAll('[data-theme-set]').forEach(b => b.onclick = () => { prefs.set('theme', b.dataset.themeSet); applyTheme(); mapCtl.retheme(); redrawCard(); renderSettings(); });
+  on('#y-export', exportCatalogue);
 }
 /* Make a WAV copy of an older FLAC recording and point the entry at it. */
 async function convertToWav(s, onProgress) {

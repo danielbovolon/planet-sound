@@ -5,8 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Planet Sound</title>
 <meta name="description" content="An open archive of the world’s sound. Field recordings, each kept at the place and moment it was made.">
-<meta name="theme-color" content="#EEEFEA" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#10161D" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#10161D">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Planet Sound">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -31,7 +30,7 @@
 <link rel="stylesheet" href="assets/css/refine.css">
 <link rel="stylesheet" href="assets/css/observatory.css">
 <link rel="stylesheet" href="assets/css/atlas.css">
-<script>/* the chosen appearance, before the page is drawn */try{var t=JSON.parse(localStorage.getItem('ps-theme')||'"auto"');if(t==='observatory'||t==='atlas'){document.documentElement.dataset.theme=t==='atlas'?'light':'dark';document.documentElement.dataset.look=t;}else if(t!=='auto')document.documentElement.dataset.theme=t;}catch(e){}</script>
+<script>/* the chosen appearance, before the page is drawn */var r=document.documentElement;r.dataset.theme='dark';try{var t=JSON.parse(localStorage.getItem('ps-theme')||'"dark"');if(t==='observatory'||t==='atlas'){r.dataset.theme=t==='atlas'?'light':'dark';r.dataset.look=t;}}catch(e){}</script>
 <script src="config.js"></script>
 </head>
 <body>
@@ -46,6 +45,7 @@
     <button type="button" data-view="map" aria-pressed="true">Map</button>
     <button type="button" data-view="index" aria-pressed="false">Index</button>
     <button type="button" data-view="archive" aria-pressed="false">Archive</button>
+    <button type="button" data-view="settings" aria-pressed="false">Settings</button>
     <button type="button" data-view="about" aria-pressed="false">About</button>
   </nav>
   <label class="search">
@@ -118,6 +118,14 @@
     <div class="archive-wrap">
       <div class="index-head"><h1>Archive</h1></div>
       <div class="archive-body" id="you-body"></div>
+    </div>
+  </section>
+
+  <!-- SETTINGS -->
+  <section class="view" id="settings-view" aria-label="Settings" hidden>
+    <div class="archive-wrap">
+      <div class="index-head"><h1>Settings</h1></div>
+      <div class="archive-body" id="settings-body"></div>
     </div>
   </section>
 

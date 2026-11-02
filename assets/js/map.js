@@ -246,10 +246,10 @@ function atlasStyle(sources) {
 /** Lines of latitude and longitude every 15°; the equator and the prime meridian are marked in red. */
 function graticule() {
   const f = [];
-  for (let lng = -180; lng < 180; lng += 15) { const c = []; for (let lat = -80; lat <= 80; lat += 4) c.push([lng, lat]); f.push({ type: 'Feature', properties: { main: lng === 0 }, geometry: { type: 'LineString', coordinates: c } }); }
+  for (let lng = -180; lng < 180; lng += 15) { const c = []; for (let lat = -80; lat <= 80; lat += 4) c.push([lng, lat]); f.push({ type: 'Feature', properties: { main: false }, geometry: { type: 'LineString', coordinates: c } }); }
   // (each parallel in two halves: a line across the whole width is cut short by the map's tiling)
   const parallel = (lat, props) => { for (const [a, b] of [[-180, 0], [0, 180]]) { const c = []; for (let lng = a; lng <= b; lng += 3) c.push([lng, lat]); f.push({ type: 'Feature', properties: props, geometry: { type: 'LineString', coordinates: c } }); } };
-  for (let lat = -75; lat <= 75; lat += 15) parallel(lat, { main: lat === 0 });
+  for (let lat = -75; lat <= 75; lat += 15) parallel(lat, { main: false });
   for (const lat of [23.44, -23.44, 66.56, -66.56]) parallel(lat, { main: false, tropic: true });
   return { type: 'FeatureCollection', features: f };
 }
