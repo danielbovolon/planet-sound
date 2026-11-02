@@ -1,7 +1,15 @@
-Planet Sound — update 7: "Edit recording" in the recorder is now called "Trim", like on the entries.
+Planet Sound — update 8: the Observatory appearance (red), and a refined look for Paper and Night
 
-Upload to the same folders (website only, no backend change):
-  index.html             -> root
-  sw.js                  -> root   (new VERSION, so phones pick up the update)
-  assets/js/trimui.js    -> assets/js/
-  assets/js/studio.js    -> assets/js/
+Website only (no backend change). Upload each file to the same folder in the planet-sound repo:
+  index.html                                    -> root
+  sw.js                                         -> root           (new VERSION, so phones pick up the update)
+  assets/css/refine.css                         -> assets/css/    (new)
+  assets/css/observatory.css                    -> assets/css/    (new)
+  assets/fonts/plex-mono-latin-400-normal.woff2 -> assets/fonts/  (new)
+  assets/fonts/plex-mono-latin-500-normal.woff2 -> assets/fonts/  (new)
+  assets/fonts/plex-mono-LICENSE.txt            -> assets/fonts/  (new; IBM Plex Mono, SIL Open Font License)
+  assets/js/app.js                              -> assets/js/
+  assets/js/map.js                              -> assets/js/
+
+Then: Archive → Settings → Appearance → Observatory.
+(Don't upload this UPLOAD.txt to the repo: anything in the repo can be read on the website.)

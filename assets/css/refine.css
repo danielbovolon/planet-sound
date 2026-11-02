@@ -1,0 +1,97 @@
+/* Planet Sound — refinement for every appearance (loaded after the others).
+   The top bar is plain text with no outline around the letters: over the map a soft fade at the top of the
+   screen keeps it readable. Buttons are flat fills without borders; controls are lighter. A few calm animations:
+   panels and pages ease in, and the selected recording on the map is marked by slowly widening rings. */
+
+/* ---------- the top bar ---------- */
+.bar .name, .bar .halo, .views button, .views .you, .search input {
+  -webkit-text-stroke: 0 !important; paint-order: normal !important; text-shadow: none !important;
+}
+.brand .name { font-weight: 600 !important; letter-spacing: -0.005em !important; }
+.views button {
+  font-size: 14px !important; font-weight: 500 !important; letter-spacing: 0.01em !important; padding: 8px 10px !important;
+  color: color-mix(in srgb, var(--ink) 66%, transparent) !important; text-decoration: none !important; transition: color .18s ease;
+}
+.views button:hover { color: var(--ink) !important; text-decoration: none !important; }
+.views button[aria-pressed="true"] { color: var(--signal) !important; box-shadow: none !important; }
+@media (min-width: 861px) { .search input::placeholder { color: color-mix(in srgb, var(--ink) 58%, transparent) !important; opacity: 1 !important; } }
+.search::before, .search::after { box-shadow: none !important; }
+.menu-btn span { box-shadow: none !important; }
+/* over the map: a soft fade from the page colour behind the bar, instead of outlined letters */
+body[data-page="map"] .bar::before {
+  content: ''; position: absolute; left: 0; right: 0; top: 0; height: calc(var(--bar-h) + 40px); z-index: -1; pointer-events: none;
+  background: linear-gradient(color-mix(in srgb, var(--paper) 82%, transparent), color-mix(in srgb, var(--paper) 46%, transparent) 55%, transparent);
+}
+.rec-btn { border-color: transparent !important; font-weight: 600; letter-spacing: 0.01em; transition: filter .15s ease, transform .15s ease; }
+.rec-btn:active { transform: scale(.98); }
+@media (min-width: 861px) { .rec-btn { height: 36px; padding: 0 15px 0 12px; } }
+/* the phone menu is a small glass panel everywhere, the map included */
+@media (max-width: 860px) {
+  .bar.open .views {
+    background: var(--glass-strong) !important;
+    -webkit-backdrop-filter: var(--glass-blur) !important; backdrop-filter: var(--glass-blur) !important;
+    border: 1px solid var(--glass-line) !important; border-radius: 14px !important;
+    box-shadow: var(--glass-shadow) !important; padding: 6px !important; top: calc(var(--bar-h) + 6px) !important; right: 10px !important;
+    animation: ps-drop .18s ease both;
+  }
+  .bar.open .views button { padding: 11px 16px !important; font-size: 16px !important; }
+}
+
+/* ---------- buttons and controls: flat fills, no outlines ---------- */
+.btn {
+  border-color: transparent !important; box-shadow: none !important;
+  background: color-mix(in srgb, var(--ink) 6.5%, transparent) !important;
+  min-height: 36px; padding: 0 14px; border-radius: 9px; font-weight: 500; letter-spacing: 0.005em;
+  transition: background-color .15s ease, color .15s ease, filter .15s ease;
+}
+.btn:hover { background: color-mix(in srgb, var(--ink) 11%, transparent) !important; }
+.btn.solid { background: var(--ink) !important; color: var(--paper) !important; }
+.btn.solid:hover { filter: brightness(1.15); }
+.btn.ghost, .btn.quiet { background: none !important; }
+.btn.ghost:hover, .btn.quiet:hover { background: color-mix(in srgb, var(--ink) 6%, transparent) !important; }
+.tool { border: 0 !important; }
+.tag { border-color: color-mix(in srgb, var(--ink) 13%, transparent) !important; transition: background-color .15s ease, color .15s ease; }
+.tag[aria-pressed="true"] { border-color: var(--ink) !important; }
+.tag-more { text-decoration: none !important; color: var(--graphite); }
+.tag-more:hover { color: var(--ink); }
+/* sound shaping */
+.rack-tab { border-color: transparent !important; background: none !important; box-shadow: none !important; transition: color .15s ease, background-color .15s ease; }
+.rack-tab:hover { color: var(--ink); }
+.rack-tab[aria-selected="true"] { background: color-mix(in srgb, var(--ink) 8%, transparent) !important; color: var(--ink); }
+.rack .sw, .rack .mini-seg, .gr-foot .sw { border-color: transparent !important; background: color-mix(in srgb, var(--ink) 6%, transparent) !important; }
+.rack .sw[aria-pressed="true"] { background: color-mix(in srgb, var(--ink) 11%, transparent) !important; }
+.rack select { border-color: transparent !important; background-color: color-mix(in srgb, var(--ink) 6%, transparent) !important; }
+.band-tab { border-color: transparent !important; background: color-mix(in srgb, var(--ink) 4%, transparent) !important; }
+.band-tab[aria-selected="true"] { box-shadow: none !important; background: color-mix(in srgb, var(--ink) 9%, transparent) !important; }
+.band-tab .bt-btns button { border-color: transparent !important; background: color-mix(in srgb, var(--ink) 6%, transparent) !important; }
+.band-tab .bt-btns button[aria-pressed="true"] { background: var(--ink) !important; }
+.band-tab .bt-btns button.on[aria-pressed="true"] { background: var(--k-lit) !important; }
+.loopbar { border-color: transparent !important; background: color-mix(in srgb, var(--ink) 4%, transparent) !important; }
+.seg { border-color: transparent !important; }
+.field input, .field textarea, .sel select { border-color: color-mix(in srgb, var(--ink) 12%, transparent) !important; }
+
+/* ---------- calm motion ---------- */
+@keyframes ps-rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+@keyframes ps-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes ps-drop { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+.card:not([hidden]) { animation: ps-rise .3s cubic-bezier(.2, .7, .2, 1) both; }
+#index-view:not([hidden]), #archive-view:not([hidden]), #about-view:not([hidden]) { animation: ps-fade .22s ease both; }
+dialog[open] { animation: ps-rise .24s cubic-bezier(.2, .7, .2, 1) both; }
+.studio:not([hidden]) { animation: ps-fade .2s ease both; }
+
+/* the selected recording on the map */
+.ps-sel { position: relative; width: 0; height: 0; pointer-events: none !important; }
+.ps-sel .r, .ps-sel .c { position: absolute; left: 0; top: 0; border-radius: 50%; pointer-events: none; }
+.ps-sel .r { width: 54px; height: 54px; margin: -27px 0 0 -27px; border: 1.5px solid var(--signal); opacity: 0; animation: ps-ring 2.8s cubic-bezier(.2, .6, .3, 1) infinite; }
+.ps-sel .r:nth-child(2), .ps-sel .r:nth-child(3) { display: none; }
+.ps-sel .c { display: none; }
+.ps-sel .ps-tag { display: none; }
+@keyframes ps-ring { 0% { transform: scale(.25); opacity: .85; } 100% { transform: scale(1); opacity: 0; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .ps-sel .r { animation: none !important; opacity: .6; transform: scale(.5); }
+}
+
+/* the five effect tabs: three and two, so no label is squeezed */
+.rack-tabs { flex-wrap: wrap; gap: 4px; }
+.rack-tab { flex: 1 1 30% !important; min-width: 0; padding: 9px 4px !important; white-space: nowrap; }

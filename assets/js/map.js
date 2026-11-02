@@ -2,6 +2,21 @@
  * board colours as the rest of the archive. Vector data from OpenFreeMap
  * (no key, no quota), optional Esri imagery. */
 import * as maplibregl from '../../vendor/maplibre/maplibre-gl.mjs';
+import { accession } from './ui.js';
+
+/* Which map: the satellite globe (Paper, Night), or the Observatory: land as a field of light dots on a slate sphere, in red and white. */
+const lookBase = () => (document.documentElement.dataset.look === 'observatory' ? 'observatory' : 'imagery');
+const AMBER = '#F0503A', AMBER_HI = '#FF8A73', OBS_LAND = '#2C3845', OBS_SEA = '#18222D', OBS_TEXT = 'rgba(236,241,246,0.78)';   // (the Observatory red)
+/** The dot pattern the Observatory's land is printed with (7 px pitch, drawn at 2×). */
+function dotImage() {
+  const n = 14, d = new Uint8Array(n * n * 4), c = (n - 1) / 2, r = 1.25;
+  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
+    const dist = Math.hypot(x - c, y - c), a = Math.max(0, Math.min(1, r + 0.5 - dist)), i = (y * n + x) * 4;
+    d[i] = 222; d[i + 1] = 232; d[i + 2] = 242; d[i + 3] = Math.round(a * 235);
+  }
+  return { width: n, height: n, data: d };
+}
+const hms = s => { s = Math.max(0, Math.round(s || 0)); return [Math.floor(s / 3600), Math.floor(s / 60) % 60, s % 60].map(v => String(v).padStart(2, '0')).join(':'); };
 
 const OFM = 'https://tiles.openfreemap.org';
 const ESRI = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
@@ -27,6 +42,24 @@ function palette() {
 }
 
 function soundLayers(c, base) {
+  if (base === 'observatory') return [
+    { id: 'ps-clusters', type: 'circle', source: 'sounds', filter: ['has', 'point_count'],
+      paint: { 'circle-color': 'rgba(240,80,58,0.16)', 'circle-stroke-color': AMBER, 'circle-stroke-width': 1, 'circle-stroke-opacity': 0.8,
+        'circle-radius': ['interpolate', ['linear'], ['get', 'point_count'], 2, 11, 20, 16, 200, 22] } },
+    { id: 'ps-count', type: 'symbol', source: 'sounds', filter: ['has', 'point_count'],
+      layout: { 'text-field': ['get', 'point_count_abbreviated'], 'text-font': ['Noto Sans Regular'], 'text-size': 10.5, 'text-allow-overlap': true, 'text-ignore-placement': true },
+      paint: { 'text-color': AMBER_HI } },
+    { id: 'ps-glow', type: 'circle', source: 'sounds', filter: ['!', ['has', 'point_count']],
+      paint: { 'circle-color': AMBER, 'circle-blur': 1, 'circle-opacity': ['case', ['boolean', ['feature-state', 'selected'], false], 0, 0.5],
+        'circle-radius': ['interpolate', ['linear'], ['zoom'], 1, 9, 8, 12, 14, 15] } },
+    { id: 'ps-halo', type: 'circle', source: 'sounds', filter: ['!', ['has', 'point_count']], paint: { 'circle-opacity': 0, 'circle-radius': 0 } },
+    { id: 'ps-points', type: 'circle', source: 'sounds', filter: ['!', ['has', 'point_count']],
+      paint: {
+        'circle-color': ['case', ['boolean', ['feature-state', 'selected'], false], '#FFFFFF', ['==', ['get', 'private'], 1], OBS_LAND, AMBER_HI],
+        'circle-stroke-color': AMBER, 'circle-stroke-width': ['case', ['==', ['get', 'private'], 1], 1.2, 0],
+        'circle-radius': ['interpolate', ['linear'], ['zoom'], 1, 3, 8, 3.8, 14, 4.8],
+      } },
+  ];
   const imagery = base === 'imagery';
   const fill = imagery ? '#F7F7F4' : c.ink, ring = imagery ? '#1E2B4D' : c.paper;
   return [
@@ -59,6 +92,7 @@ function buildStyle(base) {
     ofm: { type: 'vector', url: `${OFM}/planet`, attribution: '<a href="https://openfreemap.org" target="_blank" rel="noopener">OpenFreeMap</a> © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>' },
     sounds: { type: 'geojson', data: { type: 'FeatureCollection', features: [] }, cluster: true, clusterRadius: 38, clusterMaxZoom: 15, promoteId: 'id' },
   };
+  if (base === 'observatory') return observatoryStyle(sources, c);
   const layers = [{ id: 'bg', type: 'background', paint: { 'background-color': c.paper } }];
   const labelHalo = base === 'imagery' ? 'rgba(10,16,24,.75)' : c.paper;
   const labelColor = base === 'imagery' ? '#F2F3EF' : c.label;
@@ -127,8 +161,53 @@ function buildStyle(base) {
   };
 }
 
+/** Lines of latitude and longitude every 15°; the equator and the prime meridian are marked in red. */
+function graticule() {
+  const f = [];
+  for (let lng = -180; lng < 180; lng += 15) { const c = []; for (let lat = -80; lat <= 80; lat += 4) c.push([lng, lat]); f.push({ type: 'Feature', properties: { main: lng === 0 }, geometry: { type: 'LineString', coordinates: c } }); }
+  for (let lat = -75; lat <= 75; lat += 15) { const c = []; for (let lng = -180; lng <= 180; lng += 3) c.push([lng, lat]); f.push({ type: 'Feature', properties: { main: lat === 0 }, geometry: { type: 'LineString', coordinates: c } }); }
+  return { type: 'FeatureCollection', features: f };
+}
+/** The Observatory: land is a field of dots, the sea is slate, a grid of latitude and longitude, the recordings glow red. */
+function observatoryStyle(sources, c) {
+  const txt = (extra = {}) => ({ 'text-color': OBS_TEXT, 'text-halo-color': OBS_SEA, 'text-halo-width': 1.2, ...extra });
+  const lay = { 'text-font': ['Noto Sans Regular'], 'text-transform': 'uppercase', 'text-letter-spacing': 0.22, 'text-max-width': 8 };
+  return {
+    version: 8,
+    glyphs: `${OFM}/fonts/{fontstack}/{range}.pbf`,
+    projection: { type: 'globe' },
+    sky: { 'sky-color': '#0B1018', 'horizon-color': '#BFD8F5', 'fog-color': '#0B1018',
+      'atmosphere-blend': ['interpolate', ['linear'], ['zoom'], 0, 0.95, 4, 0.55, 7, 0] },
+    sources: { ...sources, grid: { type: 'geojson', data: graticule() } },
+    layers: [
+      { id: 'bg', type: 'background', paint: { 'background-color': OBS_LAND } },
+      { id: 'bg-dots', type: 'background', paint: { 'background-pattern': 'ps-dot', 'background-opacity': ['interpolate', ['linear'], ['zoom'], 6, 1, 11, 0.5] } },
+      { id: 'water', type: 'fill', source: 'ofm', 'source-layer': 'water', paint: { 'fill-color': OBS_SEA } },
+      { id: 'coast', type: 'line', source: 'ofm', 'source-layer': 'water', filter: ['==', ['get', 'class'], 'ocean'],
+        paint: { 'line-color': 'rgba(214,228,244,0.42)', 'line-width': ['interpolate', ['linear'], ['zoom'], 1, 0.6, 8, 1.1] } },
+      { id: 'waterway', type: 'line', source: 'ofm', 'source-layer': 'waterway', minzoom: 8, paint: { 'line-color': 'rgba(150,190,230,0.35)', 'line-width': 0.9 } },
+      { id: 'building', type: 'fill', source: 'ofm', 'source-layer': 'building', minzoom: 14, paint: { 'fill-color': 'rgba(236,241,246,0.07)', 'fill-outline-color': 'rgba(236,241,246,0.16)' } },
+      { id: 'road-minor', type: 'line', source: 'ofm', 'source-layer': 'transportation', minzoom: 12,
+        filter: ['match', ['get', 'class'], ['minor', 'service', 'tertiary', 'track', 'path'], true, false],
+        paint: { 'line-color': 'rgba(236,241,246,0.16)', 'line-width': ['interpolate', ['linear'], ['zoom'], 12, 0.4, 16, 1.6] } },
+      { id: 'road-major', type: 'line', source: 'ofm', 'source-layer': 'transportation', minzoom: 6,
+        filter: ['match', ['get', 'class'], ['motorway', 'trunk', 'primary', 'secondary'], true, false],
+        paint: { 'line-color': 'rgba(240,80,58,0.45)', 'line-width': ['interpolate', ['linear'], ['zoom'], 6, 0.3, 12, 1, 16, 2.4] } },
+      { id: 'grid', type: 'line', source: 'grid', maxzoom: 7, paint: { 'line-color': ['case', ['get', 'main'], 'rgba(240,80,58,0.55)', 'rgba(214,228,244,0.14)'],
+        'line-width': ['case', ['get', 'main'], 0.9, 0.6] } },
+      { id: 'b-country', type: 'line', source: 'ofm', 'source-layer': 'boundary', filter: ['all', ['==', ['get', 'admin_level'], 2], ['!=', ['get', 'maritime'], 1]],
+        paint: { 'line-color': 'rgba(236,241,246,0.30)', 'line-width': 0.7, 'line-dasharray': [2, 3] } },
+      { id: 'place-town', type: 'symbol', source: 'ofm', 'source-layer': 'place', minzoom: 5, filter: ['match', ['get', 'class'], ['city', 'town'], true, false],
+        layout: { ...lay, 'text-field': NAME, 'text-size': ['interpolate', ['linear'], ['zoom'], 5, 9.5, 12, 12] }, paint: txt() },
+      { id: 'place-country', type: 'symbol', source: 'ofm', 'source-layer': 'place', minzoom: 2.5, maxzoom: 6, filter: ['==', ['get', 'class'], 'country'],
+        layout: { ...lay, 'text-field': NAME, 'text-size': 10, 'text-letter-spacing': 0.32 }, paint: txt({ 'text-color': 'rgba(236,241,246,0.6)' }) },
+      ...soundLayers(c, 'observatory'),
+    ],
+  };
+}
+
 export function createMap(el, { onSelect, onSpot, onMoveEnd, start }) {
-  let base = 'imagery', data = { type: 'FeatureCollection', features: [] }, selected = null, picking = null;
+  let base = lookBase(), selMarker = null, data = { type: 'FeatureCollection', features: [] }, selected = null, picking = null;
   const map = new maplibregl.Map({
     container: el,
     style: buildStyle(base),
@@ -139,6 +218,27 @@ export function createMap(el, { onSelect, onSpot, onMoveEnd, start }) {
     renderWorldCopies: false,
   });
   map.touchZoomRotate.disableRotation();
+  const addDot = () => { try { if (!map.hasImage('ps-dot')) map.addImage('ps-dot', dotImage(), { pixelRatio: 2 }); } catch {} };
+  map.on('styleimagemissing', e => { if (e.id === 'ps-dot') addDot(); });
+  map.on('style.load', addDot); map.on('styledata', addDot);
+  /* The selected recording: a few rings that slowly widen, and in the Observatory a leader line with its number,
+     place and length. A DOM marker, so it follows the globe and hides behind it. */
+  function selElement(f) {
+    const p = f.properties, e = document.createElement('div');
+    e.className = 'ps-sel';
+    e.innerHTML = `<i class="r"></i><i class="r"></i><i class="r"></i><i class="c"></i>
+      <div class="ps-tag" aria-hidden="true"><svg viewBox="0 0 150 64" preserveAspectRatio="none"><polyline points="0,64 40,22 150,22" pathLength="1"/></svg>
+      <span class="t1"></span><span class="t2"></span></div>`;
+    e.querySelector('.t1').textContent = accession(p.no);
+    e.querySelector('.t2').textContent = `${String(p.place || '').split(',')[0].trim().toUpperCase() || 'UNNAMED PLACE'} · ${hms(p.dur)}`;
+    return e;
+  }
+  function placeTag() {
+    if (!selMarker) return;
+    const pt = map.project(selMarker.getLngLat()), w = el.clientWidth;
+    selMarker.getElement().classList.toggle('flip', pt.x > w - 230);
+  }
+  map.on('move', placeTag);
   map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right');
   const hoverPopup = new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 12, className: 'ps-pop' });
 
@@ -191,7 +291,8 @@ export function createMap(el, { onSelect, onSpot, onMoveEnd, start }) {
         type: 'FeatureCollection',
         features: sounds.filter(s => typeof s.lat === 'number' && typeof s.lng === 'number').map(s => ({
           type: 'Feature', id: s.id, geometry: { type: 'Point', coordinates: [s.lng, s.lat] },
-          properties: { id: s.id, title: s.title, place: s.place || '', private: s.visibility === 'private' ? 1 : 0 },
+          properties: { id: s.id, title: s.title, place: s.place || '', private: s.visibility === 'private' ? 1 : 0, no: s.no,
+            dur: s.trim && s.trim.end > s.trim.start ? s.trim.end - s.trim.start : s.duration || 0 },
         })),
       };
       if (map.getSource('sounds')) applyData();
@@ -201,6 +302,9 @@ export function createMap(el, { onSelect, onSpot, onMoveEnd, start }) {
       if (selected && map.getSource('sounds')) map.setFeatureState({ source: 'sounds', id: selected }, { selected: false });
       selected = id || null;
       if (selected && map.getSource('sounds')) map.setFeatureState({ source: 'sounds', id: selected }, { selected: true });
+      if (selMarker) { selMarker.remove(); selMarker = null; }
+      const f = selected && data.features.find(x => x.id === selected);
+      if (f) { selMarker = new maplibregl.Marker({ element: selElement(f), anchor: 'center' }).setLngLat(f.geometry.coordinates).addTo(map); placeTag(); }
     },
     flyTo(lat, lng, zoom) {
       const z = zoom ?? Math.max(map.getZoom(), 9);
@@ -208,7 +312,7 @@ export function createMap(el, { onSelect, onSpot, onMoveEnd, start }) {
       const offsetY = innerWidth <= 860 && !document.getElementById('card').hidden ? -innerHeight * 0.22 : 0;
       map.flyTo({ center: [lng, lat], zoom: z, offset: [offsetX, offsetY], speed: 1.4, curve: 1.5, essential: true });
     },
-    retheme() { map.setStyle(buildStyle(base), { diff: false }); },
+    retheme() { base = lookBase(); map.setStyle(buildStyle(base), { diff: false }); },
     resize() { map.resize(); },
     center() { const c = map.getCenter(); return { lat: c.lat, lng: c.lng, zoom: map.getZoom() }; },
     /** Crosshair placement. Resolves with {lat,lng} or null if cancelled. */
