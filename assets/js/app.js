@@ -33,15 +33,16 @@ const S = {
 };
 
 /* ---------------- theme ---------------- */
-/* Appearance: Match device, Paper, Night, or Observatory (a dark look of its own: data-theme="dark" + data-look). */
+/* Appearance: Match device, Paper, Night, Observatory (a dark look of its own: data-theme="dark" + data-look) or
+   Atlas (a flat antique map: data-theme="light" + data-look). */
 const THEME_META = [...document.querySelectorAll('meta[name="theme-color"]')].map(m => [m, m.content]);
 function applyTheme() {
-  const t = prefs.get('theme', 'auto'), obs = t === 'observatory', root = document.documentElement;
-  if (t === 'auto') root.removeAttribute('data-theme'); else root.dataset.theme = obs ? 'dark' : t;
-  if (obs) root.dataset.look = 'observatory'; else delete root.dataset.look;
+  const t = prefs.get('theme', 'auto'), obs = t === 'observatory', atlas = t === 'atlas', root = document.documentElement;
+  if (t === 'auto') root.removeAttribute('data-theme'); else root.dataset.theme = obs ? 'dark' : atlas ? 'light' : t;
+  if (obs || atlas) root.dataset.look = t; else delete root.dataset.look;
   const dark = obs || t === 'dark' || (t === 'auto' && matchMedia('(prefers-color-scheme: dark)').matches);
   document.body.classList.toggle('dark-ui', dark);
-  THEME_META.forEach(([m, c]) => { m.content = obs ? '#10151C' : c; });
+  THEME_META.forEach(([m, c]) => { m.content = obs ? '#10151C' : atlas ? '#EADBB4' : c; });
 }
 applyTheme();
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { if (prefs.get('theme', 'auto') === 'auto') { applyTheme(); mapCtl && mapCtl.retheme(); redrawCard(); } });
@@ -602,7 +603,7 @@ async function renderYou(warning) {
     </section>
     <section class="you-sec">
       <h3>Appearance</h3>
-      <div class="seg" role="group" aria-label="Appearance">${[['auto', 'Match device'], ['light', 'Paper'], ['dark', 'Night'], ['observatory', 'Observatory']].map(([t, l]) => `<button type="button" data-theme-set="${t}" aria-pressed="${theme === t}">${l}</button>`).join('')}</div>
+      <div class="seg" role="group" aria-label="Appearance">${[['auto', 'Match device'], ['light', 'Paper'], ['dark', 'Night'], ['observatory', 'Observatory'], ['atlas', 'Atlas']].map(([t, l]) => `<button type="button" data-theme-set="${t}" aria-pressed="${theme === t}">${l}</button>`).join('')}</div>
     </section>
     ${mine.length ? `<section class="you-sec"><h3>Export</h3><p>A catalogue of your recordings with links to every original file.</p><button type="button" class="btn" id="y-export">Download catalogue (JSON)</button></section>` : ''}
     </details>`;

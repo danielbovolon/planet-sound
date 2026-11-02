@@ -95,3 +95,5 @@ dialog[open] { animation: ps-rise .24s cubic-bezier(.2, .7, .2, 1) both; }
 /* the five effect tabs: three and two, so no label is squeezed */
 .rack-tabs { flex-wrap: wrap; gap: 4px; }
 .rack-tab { flex: 1 1 30% !important; min-width: 0; padding: 9px 4px !important; white-space: nowrap; }
+
+.seg { flex-wrap: wrap; }

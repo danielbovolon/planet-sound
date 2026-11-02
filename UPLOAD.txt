@@ -1,15 +1,17 @@
-Planet Sound — update 8: the Observatory appearance (red), and a refined look for Paper and Night
+Planet Sound — update 8: two new appearances, Observatory (red globe) and Atlas (flat antique map),
+and a refined look for Paper and Night. Replaces the earlier update 8 zips.
 
 Website only (no backend change). Upload each file to the same folder in the planet-sound repo:
   index.html                                    -> root
   sw.js                                         -> root           (new VERSION, so phones pick up the update)
   assets/css/refine.css                         -> assets/css/    (new)
   assets/css/observatory.css                    -> assets/css/    (new)
+  assets/css/atlas.css                          -> assets/css/    (new)
   assets/fonts/plex-mono-latin-400-normal.woff2 -> assets/fonts/  (new)
   assets/fonts/plex-mono-latin-500-normal.woff2 -> assets/fonts/  (new)
   assets/fonts/plex-mono-LICENSE.txt            -> assets/fonts/  (new; IBM Plex Mono, SIL Open Font License)
   assets/js/app.js                              -> assets/js/
   assets/js/map.js                              -> assets/js/
 
-Then: Archive → Settings → Appearance → Observatory.
+Then: Archive → Settings → Appearance → Observatory or Atlas.
 (Don't upload this UPLOAD.txt to the repo: anything in the repo can be read on the website.)

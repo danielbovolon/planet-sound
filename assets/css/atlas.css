@@ -1,0 +1,147 @@
+/* Planet Sound — the Atlas appearance (Settings → Appearance → Atlas).
+   A flat, antique printed map: parchment and sepia ink, an oxblood red, an engraved sea, a compass rose, and the
+   archive's panels as sheets of old paper with a double rule. Serif lettering throughout, small capitals for labels.
+   Applies when <html data-look="atlas"> (set together with data-theme="light"). */
+
+:root[data-look="atlas"] {
+  --paper: #EADBB4; --sheet: #F3E7C8; --board: #D7C59B; --ink: #3E2C1B; --graphite: #7A6247; --rule: #CDB88C;
+  --signal: #9E2B1C; --signal-soft: #9E2B1C22; --focus: #9E2B1C; --k-lit: #B5452B;
+  --oxblood: #9E2B1C; --sepia: #4A3420;
+  --sans: 'Newsreader', Georgia, 'Times New Roman', serif;
+  --glass: rgba(243, 231, 200, .9); --glass-strong: rgba(243, 231, 200, .95); --glass-field: rgba(74, 52, 32, .06);
+  --glass-edge: rgba(74, 52, 32, .35); --glass-line: rgba(74, 52, 32, .22); --glass-hi: rgba(255, 250, 235, .6);
+  --glass-shadow: 0 2px 0 rgba(74, 52, 32, .08), 0 18px 40px -18px rgba(60, 40, 15, .45); --glass-blur: blur(6px);
+  --page-glass: rgba(234, 219, 180, .94); --shadow: 0 16px 36px -16px rgba(60, 40, 15, .4);
+  --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .29 0 0 0 0 .2 0 0 0 0 .1 0 0 0 .09 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  color-scheme: light;
+}
+html[data-look="atlas"], html[data-look="atlas"] body { background: #EADBB4; }
+html[data-look="atlas"] body { font-family: var(--serif); }
+html[data-look="atlas"] ::selection { background: rgba(158, 43, 28, .22); }
+
+/* the flat map: no stars behind it; a soft brown vignette at the edges, and a compass rose */
+html[data-look="atlas"] #space { display: none !important; }
+html[data-look="atlas"] #map { background: #EADBB4; }
+html[data-look="atlas"] #map-view::after {
+  content: ''; position: absolute; inset: 0; z-index: 1; pointer-events: none;
+  background: radial-gradient(ellipse at 50% 50%, transparent 58%, rgba(110, 72, 30, .16) 82%, rgba(90, 58, 22, .34) 100%);
+}
+html[data-look="atlas"] #map-view::before {
+  content: ''; position: absolute; z-index: 1; pointer-events: none; width: 132px; height: 132px; left: 22px; bottom: 74px; opacity: .85;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='-100 -100 200 200'%3E%3Cg fill='none' stroke='%234A3420'%3E%3Ccircle r='92' stroke-width='1.2'/%3E%3Ccircle r='86' stroke-width='.6'/%3E%3Ccircle r='40' stroke-width='.6'/%3E%3C/g%3E%3Cg stroke='%234A3420' stroke-width='.5'%3E%3Cpath d='M0-86V86M-86 0H86M-61-61L61 61M61-61L-61 61'/%3E%3C/g%3E%3Cg%3E%3Cpath d='M0-80L9-9 0 0z' fill='%239E2B1C'/%3E%3Cpath d='M0-80L-9-9 0 0z' fill='%23F3E7C8' stroke='%234A3420' stroke-width='.8'/%3E%3Cpath d='M0 80L-9 9 0 0z' fill='%239E2B1C'/%3E%3Cpath d='M0 80L9 9 0 0z' fill='%23F3E7C8' stroke='%234A3420' stroke-width='.8'/%3E%3Cpath d='M80 0L9 9 0 0z' fill='%234A3420'/%3E%3Cpath d='M80 0L9-9 0 0z' fill='%23F3E7C8' stroke='%234A3420' stroke-width='.8'/%3E%3Cpath d='M-80 0L-9-9 0 0z' fill='%234A3420'/%3E%3Cpath d='M-80 0L-9 9 0 0z' fill='%23F3E7C8' stroke='%234A3420' stroke-width='.8'/%3E%3Cpath d='M40-40L5-5 0 0z M-40 40L-5 5 0 0z M40 40L5 5 0 0z M-40-40L-5-5 0 0z' fill='%234A3420' opacity='.75'/%3E%3Ccircle r='4' fill='%239E2B1C' stroke='%23F3E7C8'/%3E%3C/g%3E%3Ctext y='-95' text-anchor='middle' font-family='Georgia,serif' font-size='13' font-style='italic' fill='%239E2B1C'%3EN%3C/text%3E%3C/svg%3E") center / contain no-repeat;
+}
+@media (max-width: 860px) { html[data-look="atlas"] #map-view::before { width: 92px; height: 92px; left: auto; right: 14px; bottom: 96px; } }
+
+/* ---------- lettering ---------- */
+html[data-look="atlas"] :is(.acc, .facts dt, .th, .map-count, .views button, .grp > h4, .rack-tab, .btn, .tag, .tag-more, .rec-btn, .steps li,
+  .you-sec h3, .you-more > summary, .shape-state, .seg button, .field > span, .field legend, .field .lbl, .knob-name, .clip, .sw, .mini-seg button)
+  { font-family: var(--serif) !important; font-variant: small-caps; text-transform: lowercase; letter-spacing: .08em !important; }
+html[data-look="atlas"] :is(.views button, .btn, .tag, .rec-btn, .rack-tab, .seg button) { font-size: 15.5px !important; font-weight: 500 !important; }
+html[data-look="atlas"] .views button { color: rgba(62, 44, 27, .72) !important; }
+html[data-look="atlas"] .views button:hover { color: var(--ink) !important; }
+html[data-look="atlas"] .views button[aria-pressed="true"] { color: var(--oxblood) !important; font-style: italic; }
+html[data-look="atlas"] .brand .name { font: italic 500 20px/1 var(--serif) !important; letter-spacing: .01em !important; }
+html[data-look="atlas"] .search input { font-family: var(--serif); font-style: italic; font-size: 15px; }
+html[data-look="atlas"] :is(.c-coords, .index-sum, .time, .mtime, .knob-val, .size, .input-info, .trim-len, .tr .no, .tr .d, .tr .du, .clock)
+  { font-family: var(--serif); font-variant-numeric: oldstyle-nums proportional-nums; }
+html[data-look="atlas"] .map-count { background: none; color: var(--graphite); font-size: 14px !important; font-style: italic; }
+
+/* ---------- the bar ---------- */
+html[data-look="atlas"] body[data-page="map"] .bar::before { background: linear-gradient(rgba(234, 219, 180, .92), rgba(234, 219, 180, .5) 60%, transparent); }
+html[data-look="atlas"] .rec-btn { background: var(--oxblood) !important; color: #F6EBD0 !important; border-radius: 3px; }
+html[data-look="atlas"] .rec-btn .lamp { background: #F6EBD0; box-shadow: none; }
+html[data-look="atlas"] .tool, html[data-look="atlas"] .maplibregl-ctrl-group { background: var(--sheet) !important; border: 1px solid var(--glass-line) !important; border-radius: 3px; box-shadow: none !important; }
+html[data-look="atlas"] .maplibregl-ctrl-attrib { background: rgba(243, 231, 200, .8) !important; color: var(--graphite) !important; font-family: var(--serif); }
+html[data-look="atlas"] .maplibregl-popup-content { background: var(--sheet); color: var(--ink); border: 1px solid var(--glass-edge); border-radius: 2px; font: italic 500 14px/1.3 var(--serif); box-shadow: var(--glass-shadow); }
+
+/* ---------- sheets of old paper with a double rule ---------- */
+html[data-look="atlas"] :is(.card, dialog.sheet, .picker-bar) {
+  border-radius: 2px; border: 1px solid rgba(74, 52, 32, .55);
+  background: var(--grain), linear-gradient(#F4E9CC, #EFE1BE); background-size: 220px 220px, auto;
+  box-shadow: inset 0 0 0 4px #F3E7C8, inset 0 0 0 5px rgba(74, 52, 32, .35), inset 0 0 60px rgba(150, 110, 50, .12), var(--glass-shadow);
+  -webkit-backdrop-filter: none; backdrop-filter: none;
+}
+html[data-look="atlas"] .card .card-scroll { padding-left: 26px; padding-right: 26px; }
+@media (max-width: 860px) { html[data-look="atlas"] .card, html[data-look="atlas"] dialog.sheet { border-radius: 4px 4px 0 0; } html[data-look="atlas"] .card .card-scroll { padding-left: 20px; padding-right: 20px; } }
+html[data-look="atlas"] .acc, html[data-look="atlas"] .acc b { color: var(--oxblood) !important; font-size: 14px; }
+html[data-look="atlas"] .card h2 { font-style: italic; font-weight: 500; }
+html[data-look="atlas"] .c-place { font-family: var(--serif); font-size: 16px; }
+html[data-look="atlas"] .c-coords { font-style: italic; }
+html[data-look="atlas"] .sono-img:not(.empty):not(.heat) { background-color: #3E2C1B; }
+html[data-look="atlas"] .sono-axis span { background: rgba(243, 231, 200, .85) !important; font-family: var(--serif); font-style: italic; }
+html[data-look="atlas"] .facts { border-top: 0; background: linear-gradient(rgba(74, 52, 32, .4), rgba(74, 52, 32, .4)) top / 100% 1px no-repeat, linear-gradient(rgba(74, 52, 32, .4), rgba(74, 52, 32, .4)) 0 3px / 100% 1px no-repeat; padding-top: 18px; }
+html[data-look="atlas"] .facts dt { color: var(--graphite); }
+html[data-look="atlas"] .play, html[data-look="atlas"] .mplay { background: var(--oxblood) !important; }
+html[data-look="atlas"] .play svg path, html[data-look="atlas"] .mplay svg path { fill: #F6EBD0 !important; }
+html[data-look="atlas"] .play.on, html[data-look="atlas"] .mplay.on { background: var(--sepia) !important; }
+html[data-look="atlas"] .sono .head { background: var(--oxblood); }
+
+/* buttons, tags, fields */
+html[data-look="atlas"] .btn { background: rgba(74, 52, 32, .07) !important; border-radius: 2px; }
+html[data-look="atlas"] .btn:hover { background: rgba(74, 52, 32, .13) !important; }
+html[data-look="atlas"] .btn.solid { background: var(--oxblood) !important; color: #F6EBD0 !important; }
+html[data-look="atlas"] .btn.ghost, html[data-look="atlas"] .btn.quiet { background: none !important; }
+html[data-look="atlas"] .tag { border-radius: 2px; border-color: rgba(74, 52, 32, .3) !important; background: none; }
+html[data-look="atlas"] .tag[aria-pressed="true"] { background: var(--sepia) !important; border-color: var(--sepia) !important; color: #F3E7C8; }
+html[data-look="atlas"] .seg { border-radius: 2px; background: rgba(74, 52, 32, .06) !important; box-shadow: none; }
+html[data-look="atlas"] .seg button { border-radius: 2px; }
+html[data-look="atlas"] .seg button[aria-pressed="true"] { background: var(--sepia); color: #F3E7C8; }
+html[data-look="atlas"] .field input, html[data-look="atlas"] .field textarea, html[data-look="atlas"] .sel select { border-radius: 2px; background-color: rgba(255, 250, 235, .5) !important; font-family: var(--serif); }
+html[data-look="atlas"] :is(.check, .choice, .lm) input { accent-color: var(--oxblood); }
+html[data-look="atlas"] .choice label { border-radius: 2px; }
+
+/* sound shaping: a brass-and-paper instrument */
+html[data-look="atlas"] .rack { background: rgba(74, 52, 32, .045) !important; border: 1px solid rgba(74, 52, 32, .3); border-radius: 2px; box-shadow: inset 0 0 0 3px rgba(243, 231, 200, .7), inset 0 0 0 4px rgba(74, 52, 32, .18); }
+html[data-look="atlas"] .rack-tab[aria-selected="true"] { color: var(--oxblood); background: rgba(158, 43, 28, .08) !important; font-style: italic; }
+html[data-look="atlas"] :is(.rack .sw, .mini-seg, .rack select, .band-tab, .band-tab .bt-btns button) { border-radius: 2px !important; }
+html[data-look="atlas"] .mini-seg button[aria-pressed="true"] { background: var(--sepia); color: #F3E7C8; }
+html[data-look="atlas"] :is(.strip, .curve, .gr-view canvas, .gr-over canvas, .fx-pic canvas) { border-radius: 2px; background: rgba(255, 250, 235, .45); }
+html[data-look="atlas"] .loop input:checked + .loop-sw { background: var(--oxblood); }
+
+/* ---------- pages ---------- */
+html[data-look="atlas"] #index-view, html[data-look="atlas"] #about-view, html[data-look="atlas"] #archive-view {
+  background: var(--grain), radial-gradient(ellipse at 50% 40%, #F1E4C3, #E4D2A6); background-size: 220px 220px, auto;
+  -webkit-backdrop-filter: none; backdrop-filter: none;
+}
+html[data-look="atlas"] body:not([data-page="map"]) .bar::after { background: rgba(234, 219, 180, .9); border-bottom: 1px solid rgba(74, 52, 32, .3); -webkit-backdrop-filter: none; backdrop-filter: none; }
+html[data-look="atlas"] :is(.index-head h1, .about h1, .archive-wrap .index-head h1) { font-style: italic; font-weight: 500; }
+html[data-look="atlas"] .index-contrib b { color: var(--oxblood); }
+html[data-look="atlas"] .table { border-top: 0; background: linear-gradient(var(--sepia), var(--sepia)) top / 100% 1px no-repeat, linear-gradient(var(--sepia), var(--sepia)) 0 3px / 100% 1px no-repeat; padding-top: 4px; }
+html[data-look="atlas"] .tr { border-bottom-color: rgba(74, 52, 32, .2) !important; }
+html[data-look="atlas"] button.tr:hover { background: rgba(158, 43, 28, .05); }
+html[data-look="atlas"] .tr .no { color: var(--oxblood); font-style: italic; }
+html[data-look="atlas"] .tr .t small { font-style: italic; }
+html[data-look="atlas"] .about h2 { font-style: italic; color: var(--oxblood); font-weight: 500; font-size: 18px; }
+html[data-look="atlas"] .about .credit a { color: var(--oxblood); }
+@media (max-width: 860px) { html[data-look="atlas"] .bar.open .views { background: rgba(243, 231, 200, .97) !important; border-color: rgba(74, 52, 32, .4) !important; border-radius: 3px !important; } }
+
+/* the recorder */
+html[data-look="atlas"] .studio { background: var(--grain), linear-gradient(#F1E4C3, #E8D7AE); background-size: 220px 220px, auto; -webkit-backdrop-filter: none; backdrop-filter: none; }
+html[data-look="atlas"] .studio-head { border-bottom-color: rgba(74, 52, 32, .3); }
+html[data-look="atlas"] .steps li[aria-current="step"]::before { background: var(--oxblood); border-color: var(--oxblood); color: #F3E7C8; }
+html[data-look="atlas"] .big-rec { border-color: var(--sepia); background: #F3E7C8; }
+html[data-look="atlas"] .big-rec span { background: var(--oxblood); }
+html[data-look="atlas"] .trim-h span, html[data-look="atlas"] .trim-h::before { background: var(--oxblood); }
+html[data-look="atlas"] .trim-sel { border-color: var(--oxblood); }
+
+/* ---------- the selected recording: an inked ring, and a note on a leader line ---------- */
+html[data-look="atlas"] .ps-sel .r { width: 60px; height: 60px; margin: -30px 0 0 -30px; border: 1.2px solid var(--oxblood); animation: ps-ring 3.2s cubic-bezier(.2, .6, .3, 1) infinite; }
+html[data-look="atlas"] .ps-sel .r:nth-child(2) { display: block; animation-delay: 1.6s; }
+html[data-look="atlas"] .ps-sel .c { display: block; width: 12px; height: 12px; margin: -6px 0 0 -6px; background: var(--oxblood); border: 2px solid #F3E7C8; box-shadow: 0 0 0 1px var(--oxblood); animation: ps-core .45s ease-out both; }
+html[data-look="atlas"] .ps-sel .ps-tag { display: block; position: absolute; left: 0; bottom: 0; width: 170px; height: 64px; }
+html[data-look="atlas"] .ps-tag svg { position: absolute; left: 0; bottom: 0; width: 150px; height: 64px; overflow: visible; }
+html[data-look="atlas"] .ps-tag polyline { fill: none; stroke: var(--sepia); stroke-width: 1; vector-effect: non-scaling-stroke; stroke-dasharray: 1; stroke-dashoffset: 1; animation: ps-draw .6s .1s cubic-bezier(.4, 0, .2, 1) forwards; }
+html[data-look="atlas"] .ps-tag span {
+  position: absolute; left: 44px; white-space: nowrap; opacity: 0; animation: ps-fade .4s .5s ease forwards;
+  font-family: var(--serif); text-shadow: 0 0 4px #F3E7C8, 0 0 2px #F3E7C8, 0 0 1px #F3E7C8;
+}
+html[data-look="atlas"] .ps-tag .t1 { bottom: 60px; color: var(--oxblood); font-size: 13px; font-style: italic; }
+html[data-look="atlas"] .ps-tag .t2 { bottom: 45px; color: var(--sepia); font-size: 13px; font-variant: small-caps; text-transform: lowercase; letter-spacing: .08em; }
+html[data-look="atlas"] .ps-sel.flip .ps-tag { left: auto; right: 0; }
+html[data-look="atlas"] .ps-sel.flip .ps-tag svg { left: auto; right: 0; transform: scaleX(-1); }
+html[data-look="atlas"] .ps-sel.flip .ps-tag span { left: auto; right: 44px; text-align: right; }
+@keyframes ps-draw { to { stroke-dashoffset: 0; } }
+@keyframes ps-core { from { transform: scale(.2); opacity: 0; } to { transform: none; opacity: 1; } }
+
+/* only on the map itself, not under the pages */
+html[data-look="atlas"] #map-view[hidden]::before, html[data-look="atlas"] #map-view[hidden]::after { display: none; }

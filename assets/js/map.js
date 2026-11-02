@@ -5,7 +5,26 @@ import * as maplibregl from '../../vendor/maplibre/maplibre-gl.mjs';
 import { accession } from './ui.js';
 
 /* Which map: the satellite globe (Paper, Night), or the Observatory: land as a field of light dots on a slate sphere, in red and white. */
-const lookBase = () => (document.documentElement.dataset.look === 'observatory' ? 'observatory' : 'imagery');
+const lookBase = () => { const l = document.documentElement.dataset.look; return l === 'observatory' || l === 'atlas' ? l : 'imagery'; };
+/* Atlas: an antique printed map, flat. Parchment, sepia ink, oxblood. */
+const INK = '#4A3420', OXBLOOD = '#9E2B1C', PARCH = '#EADBB4', SEA = '#C6D2BD';
+/** A tile of paper grain: faint flecks and fibres (64 px, drawn at 2×). */
+function paperImage() {
+  const n = 128, d = new Uint8Array(n * n * 4); let seed = 7;
+  const rnd = () => { seed = (Math.imul(seed, 1664525) + 1013904223) | 0; return (seed >>> 0) / 4294967296; };
+  for (let i = 0; i < n * n; i++) { const v = rnd(); d[i * 4] = 92; d[i * 4 + 1] = 66; d[i * 4 + 2] = 36; d[i * 4 + 3] = v < 0.55 ? Math.round(v * 22) : v > 0.985 ? 70 : 0; }
+  for (let f = 0; f < 18; f++) {                       // fibres
+    let x = rnd() * n, y = rnd() * n; const a = rnd() * Math.PI, len = 6 + rnd() * 18;
+    for (let t = 0; t < len; t++) { const xi = (((x + Math.cos(a) * t) | 0) + n) % n, yi = (((y + Math.sin(a) * t) | 0) + n) % n, i = (yi * n + xi) * 4; d[i + 3] = Math.max(d[i + 3], 34); }
+  }
+  return { width: n, height: n, data: d };
+}
+/** Fine engraved hatching for the sea (one line every 4 px). */
+function hatchImage() {
+  const n = 8, d = new Uint8Array(n * n * 4);
+  for (let x = 0; x < n; x++) { const i = (0 * n + x) * 4; d[i] = 70; d[i + 1] = 98; d[i + 2] = 96; d[i + 3] = 70; }
+  return { width: n, height: n, data: d };
+}
 const AMBER = '#F0503A', AMBER_HI = '#FF8A73', OBS_LAND = '#2C3845', OBS_SEA = '#18222D', OBS_TEXT = 'rgba(236,241,246,0.78)';   // (the Observatory red)
 /** The dot pattern the Observatory's land is printed with (7 px pitch, drawn at 2×). */
 function dotImage() {
@@ -42,6 +61,22 @@ function palette() {
 }
 
 function soundLayers(c, base) {
+  if (base === 'atlas') return [
+    { id: 'ps-clusters', type: 'circle', source: 'sounds', filter: ['has', 'point_count'],
+      paint: { 'circle-color': '#F3E7C8', 'circle-stroke-color': OXBLOOD, 'circle-stroke-width': 1.4,
+        'circle-radius': ['interpolate', ['linear'], ['get', 'point_count'], 2, 11, 20, 15, 200, 21] } },
+    { id: 'ps-count', type: 'symbol', source: 'sounds', filter: ['has', 'point_count'],
+      layout: { 'text-field': ['get', 'point_count_abbreviated'], 'text-font': ['Noto Sans Bold'], 'text-size': 11, 'text-allow-overlap': true, 'text-ignore-placement': true },
+      paint: { 'text-color': OXBLOOD } },
+    { id: 'ps-halo', type: 'circle', source: 'sounds', filter: ['!', ['has', 'point_count']],
+      paint: { 'circle-color': 'rgba(0,0,0,0)', 'circle-stroke-color': OXBLOOD, 'circle-stroke-width': 0.8, 'circle-stroke-opacity': ['case', ['boolean', ['feature-state', 'selected'], false], 0, 0.55],
+        'circle-radius': ['interpolate', ['linear'], ['zoom'], 1, 7, 8, 9, 14, 11] } },
+    { id: 'ps-points', type: 'circle', source: 'sounds', filter: ['!', ['has', 'point_count']],
+      paint: {
+        'circle-color': ['case', ['==', ['get', 'private'], 1], '#F3E7C8', OXBLOOD], 'circle-stroke-color': ['case', ['==', ['get', 'private'], 1], OXBLOOD, '#F3E7C8'],
+        'circle-stroke-width': 1.2, 'circle-radius': ['interpolate', ['linear'], ['zoom'], 1, 3.4, 8, 4.2, 14, 5.2],
+      } },
+  ];
   if (base === 'observatory') return [
     { id: 'ps-clusters', type: 'circle', source: 'sounds', filter: ['has', 'point_count'],
       paint: { 'circle-color': 'rgba(240,80,58,0.16)', 'circle-stroke-color': AMBER, 'circle-stroke-width': 1, 'circle-stroke-opacity': 0.8,
@@ -93,6 +128,7 @@ function buildStyle(base) {
     sounds: { type: 'geojson', data: { type: 'FeatureCollection', features: [] }, cluster: true, clusterRadius: 38, clusterMaxZoom: 15, promoteId: 'id' },
   };
   if (base === 'observatory') return observatoryStyle(sources, c);
+  if (base === 'atlas') return atlasStyle(sources);
   const layers = [{ id: 'bg', type: 'background', paint: { 'background-color': c.paper } }];
   const labelHalo = base === 'imagery' ? 'rgba(10,16,24,.75)' : c.paper;
   const labelColor = base === 'imagery' ? '#F2F3EF' : c.label;
@@ -161,11 +197,60 @@ function buildStyle(base) {
   };
 }
 
+/** Atlas: a flat (Mercator) antique map. Parchment land with paper grain, a pale engraved sea, sepia coasts with a
+ *  second faint waterline, a graticule with the equator and the tropics, dotted borders, italic names. */
+function atlasStyle(sources) {
+  const it = { 'text-font': ['Noto Sans Italic'], 'text-letter-spacing': 0.12, 'text-max-width': 8 };
+  return {
+    version: 8,
+    glyphs: `${OFM}/fonts/{fontstack}/{range}.pbf`,
+    projection: { type: 'mercator' },
+    sources: { ...sources, grid: { type: 'geojson', data: graticule() } },
+    layers: [
+      { id: 'bg', type: 'background', paint: { 'background-color': PARCH } },
+      { id: 'bg-grain', type: 'background', paint: { 'background-pattern': 'ps-paper' } },
+      { id: 'water', type: 'fill', source: 'ofm', 'source-layer': 'water', paint: { 'fill-color': SEA } },
+      { id: 'sea-hatch', type: 'fill', source: 'ofm', 'source-layer': 'water', paint: { 'fill-pattern': 'ps-hatch', 'fill-opacity': ['interpolate', ['linear'], ['zoom'], 2, 0.38, 9, 0.18] } },
+      { id: 'waterline', type: 'line', source: 'ofm', 'source-layer': 'water', filter: ['==', ['get', 'class'], 'ocean'],
+        paint: { 'line-color': 'rgba(74,52,32,0.28)', 'line-width': 0.7, 'line-offset': ['interpolate', ['linear'], ['zoom'], 1, 2.2, 8, 3.5] } },
+      { id: 'coast', type: 'line', source: 'ofm', 'source-layer': 'water', paint: { 'line-color': INK, 'line-width': ['interpolate', ['linear'], ['zoom'], 1, 0.8, 8, 1.3] } },
+      { id: 'waterway', type: 'line', source: 'ofm', 'source-layer': 'waterway', minzoom: 5, paint: { 'line-color': 'rgba(70,98,110,0.7)', 'line-width': ['interpolate', ['linear'], ['zoom'], 5, 0.4, 12, 1.4] } },
+      { id: 'wood', type: 'fill', source: 'ofm', 'source-layer': 'landcover', minzoom: 5, filter: ['match', ['get', 'class'], ['wood', 'forest'], true, false],
+        paint: { 'fill-color': 'rgba(120,128,70,0.16)' } },
+      { id: 'building', type: 'fill', source: 'ofm', 'source-layer': 'building', minzoom: 14, paint: { 'fill-color': 'rgba(74,52,32,0.12)', 'fill-outline-color': 'rgba(74,52,32,0.35)' } },
+      { id: 'road-minor', type: 'line', source: 'ofm', 'source-layer': 'transportation', minzoom: 12, filter: ['match', ['get', 'class'], ['minor', 'service', 'tertiary', 'track', 'path'], true, false],
+        paint: { 'line-color': 'rgba(74,52,32,0.25)', 'line-width': ['interpolate', ['linear'], ['zoom'], 12, 0.4, 16, 1.8] } },
+      { id: 'road-major', type: 'line', source: 'ofm', 'source-layer': 'transportation', minzoom: 6, filter: ['match', ['get', 'class'], ['motorway', 'trunk', 'primary', 'secondary'], true, false],
+        paint: { 'line-color': 'rgba(158,43,28,0.45)', 'line-width': ['interpolate', ['linear'], ['zoom'], 6, 0.4, 12, 1.2, 16, 2.8] } },
+      { id: 'grid', type: 'line', source: 'grid', maxzoom: 8, filter: ['!', ['has', 'tropic']], paint: { 'line-color': ['case', ['get', 'main'], 'rgba(158,43,28,0.6)', 'rgba(74,52,32,0.22)'], 'line-width': ['case', ['get', 'main'], 1, 0.6] } },
+      { id: 'tropics', type: 'line', source: 'grid', maxzoom: 8, filter: ['get', 'tropic'], paint: { 'line-color': 'rgba(158,43,28,0.45)', 'line-width': 0.8, 'line-dasharray': [6, 3] } },
+      { id: 'b-region', type: 'line', source: 'ofm', 'source-layer': 'boundary', minzoom: 5, filter: ['all', ['==', ['get', 'admin_level'], 4], ['!=', ['get', 'maritime'], 1]],
+        paint: { 'line-color': 'rgba(74,52,32,0.3)', 'line-width': 0.6, 'line-dasharray': [1, 2] } },
+      { id: 'b-country', type: 'line', source: 'ofm', 'source-layer': 'boundary', filter: ['all', ['==', ['get', 'admin_level'], 2], ['!=', ['get', 'maritime'], 1]],
+        paint: { 'line-color': 'rgba(158,43,28,0.55)', 'line-width': ['interpolate', ['linear'], ['zoom'], 1, 0.6, 8, 1.2], 'line-dasharray': [1, 1.6] } },
+      { id: 'water-name', type: 'symbol', source: 'ofm', 'source-layer': 'water_name', minzoom: 1.5,
+        layout: { ...it, 'text-field': NAME, 'text-size': ['interpolate', ['linear'], ['zoom'], 2, 11, 8, 14], 'text-letter-spacing': 0.3 },
+        paint: { 'text-color': 'rgba(52,80,86,0.85)', 'text-halo-color': SEA, 'text-halo-width': 1 } },
+      { id: 'place-small', type: 'symbol', source: 'ofm', 'source-layer': 'place', minzoom: 9, filter: ['match', ['get', 'class'], ['village', 'hamlet', 'suburb', 'neighbourhood'], true, false],
+        layout: { ...it, 'text-field': NAME, 'text-size': 11.5 }, paint: { 'text-color': 'rgba(74,52,32,0.8)', 'text-halo-color': PARCH, 'text-halo-width': 1.2 } },
+      { id: 'place-town', type: 'symbol', source: 'ofm', 'source-layer': 'place', minzoom: 4, filter: ['match', ['get', 'class'], ['city', 'town'], true, false],
+        layout: { ...it, 'text-font': ['Noto Sans Regular'], 'text-field': NAME, 'text-size': ['interpolate', ['linear'], ['zoom'], 4, 10.5, 12, 15] },
+        paint: { 'text-color': INK, 'text-halo-color': PARCH, 'text-halo-width': 1.4 } },
+      { id: 'place-country', type: 'symbol', source: 'ofm', 'source-layer': 'place', minzoom: 1.5, maxzoom: 7, filter: ['==', ['get', 'class'], 'country'],
+        layout: { ...it, 'text-field': NAME, 'text-transform': 'uppercase', 'text-letter-spacing': 0.35, 'text-size': ['interpolate', ['linear'], ['zoom'], 2, 10, 6, 14] },
+        paint: { 'text-color': 'rgba(158,43,28,0.75)', 'text-halo-color': PARCH, 'text-halo-width': 1.2 } },
+      ...soundLayers({}, 'atlas'),
+    ],
+  };
+}
 /** Lines of latitude and longitude every 15°; the equator and the prime meridian are marked in red. */
 function graticule() {
   const f = [];
   for (let lng = -180; lng < 180; lng += 15) { const c = []; for (let lat = -80; lat <= 80; lat += 4) c.push([lng, lat]); f.push({ type: 'Feature', properties: { main: lng === 0 }, geometry: { type: 'LineString', coordinates: c } }); }
-  for (let lat = -75; lat <= 75; lat += 15) { const c = []; for (let lng = -180; lng <= 180; lng += 3) c.push([lng, lat]); f.push({ type: 'Feature', properties: { main: lat === 0 }, geometry: { type: 'LineString', coordinates: c } }); }
+  // (each parallel in two halves: a line across the whole width is cut short by the map's tiling)
+  const parallel = (lat, props) => { for (const [a, b] of [[-180, 0], [0, 180]]) { const c = []; for (let lng = a; lng <= b; lng += 3) c.push([lng, lat]); f.push({ type: 'Feature', properties: props, geometry: { type: 'LineString', coordinates: c } }); } };
+  for (let lat = -75; lat <= 75; lat += 15) parallel(lat, { main: lat === 0 });
+  for (const lat of [23.44, -23.44, 66.56, -66.56]) parallel(lat, { main: false, tropic: true });
   return { type: 'FeatureCollection', features: f };
 }
 /** The Observatory: land is a field of dots, the sea is slate, a grid of latitude and longitude, the recordings glow red. */
@@ -193,7 +278,7 @@ function observatoryStyle(sources, c) {
       { id: 'road-major', type: 'line', source: 'ofm', 'source-layer': 'transportation', minzoom: 6,
         filter: ['match', ['get', 'class'], ['motorway', 'trunk', 'primary', 'secondary'], true, false],
         paint: { 'line-color': 'rgba(240,80,58,0.45)', 'line-width': ['interpolate', ['linear'], ['zoom'], 6, 0.3, 12, 1, 16, 2.4] } },
-      { id: 'grid', type: 'line', source: 'grid', maxzoom: 7, paint: { 'line-color': ['case', ['get', 'main'], 'rgba(240,80,58,0.55)', 'rgba(214,228,244,0.14)'],
+      { id: 'grid', type: 'line', source: 'grid', maxzoom: 7, filter: ['!', ['has', 'tropic']], paint: { 'line-color': ['case', ['get', 'main'], 'rgba(240,80,58,0.55)', 'rgba(214,228,244,0.14)'],
         'line-width': ['case', ['get', 'main'], 0.9, 0.6] } },
       { id: 'b-country', type: 'line', source: 'ofm', 'source-layer': 'boundary', filter: ['all', ['==', ['get', 'admin_level'], 2], ['!=', ['get', 'maritime'], 1]],
         paint: { 'line-color': 'rgba(236,241,246,0.30)', 'line-width': 0.7, 'line-dasharray': [2, 3] } },
@@ -212,14 +297,16 @@ export function createMap(el, { onSelect, onSpot, onMoveEnd, start }) {
     container: el,
     style: buildStyle(base),
     center: start ? [start.lng, start.lat] : [11.35, 30],
-    zoom: start ? start.zoom : (innerWidth < 700 ? 1.1 : 2.15),
+    zoom: start ? start.zoom : base === 'atlas' ? Math.max(0, Math.log2(el.clientWidth / 512) + 0.15) : (innerWidth < 700 ? 1.1 : 2.15),
     attributionControl: { compact: true },
     maxPitch: 0, dragRotate: false, pitchWithRotate: false, touchPitch: false,
     renderWorldCopies: false,
   });
   map.touchZoomRotate.disableRotation();
   const addDot = () => { try { if (!map.hasImage('ps-dot')) map.addImage('ps-dot', dotImage(), { pixelRatio: 2 }); } catch {} };
-  map.on('styleimagemissing', e => { if (e.id === 'ps-dot') addDot(); });
+  const addAtlas = () => { try { if (!map.hasImage('ps-paper')) map.addImage('ps-paper', paperImage(), { pixelRatio: 2 }); if (!map.hasImage('ps-hatch')) map.addImage('ps-hatch', hatchImage(), { pixelRatio: 2 }); } catch {} };
+  map.on('styleimagemissing', e => { if (e.id === 'ps-dot') addDot(); if (e.id === 'ps-paper' || e.id === 'ps-hatch') addAtlas(); });
+  map.on('style.load', addAtlas); map.on('styledata', addAtlas);
   map.on('style.load', addDot); map.on('styledata', addDot);
   /* The selected recording: a few rings that slowly widen, and in the Observatory a leader line with its number,
      place and length. A DOM marker, so it follows the globe and hides behind it. */
@@ -312,7 +399,11 @@ export function createMap(el, { onSelect, onSpot, onMoveEnd, start }) {
       const offsetY = innerWidth <= 860 && !document.getElementById('card').hidden ? -innerHeight * 0.22 : 0;
       map.flyTo({ center: [lng, lat], zoom: z, offset: [offsetX, offsetY], speed: 1.4, curve: 1.5, essential: true });
     },
-    retheme() { base = lookBase(); map.setStyle(buildStyle(base), { diff: false }); },
+    retheme() {
+      const was = base; base = lookBase(); map.setStyle(buildStyle(base), { diff: false });
+      // the flat map shows the whole world at once: going to it from the globe, open it at that size
+      if (base === 'atlas' && was !== 'atlas' && map.getZoom() < 3) map.jumpTo({ zoom: Math.max(0, Math.log2(el.clientWidth / 512) + 0.15) });
+    },
     resize() { map.resize(); },
     center() { const c = map.getCenter(); return { lat: c.lat, lng: c.lng, zoom: map.getZoom() }; },
     /** Crosshair placement. Resolves with {lat,lng} or null if cancelled. */
